@@ -124,9 +124,36 @@ EOF
 chown -R "${RUN_USER}:${RUN_USER}" "${USER_HOME}/.config" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# 6. Verificare
+# 6. Autologin la desktop (fără raspi-config manual)
 # ---------------------------------------------------------------------------
-echo "==> [6/6] Verificare backend..."
+echo "==> [6/7] Activare autologin desktop pentru '${RUN_USER}'..."
+sudo systemctl set-default graphical.target || true
+
+if command -v raspi-config >/dev/null 2>&1; then
+  # Metoda oficială Raspberry Pi (funcționează pe Bullseye/Bookworm).
+  sudo raspi-config nonint do_boot_behaviour B4 || true
+else
+  # Fallback LightDM.
+  if [ -f /etc/lightdm/lightdm.conf ]; then
+    if grep -q "^\[Seat:\*\]" /etc/lightdm/lightdm.conf; then
+      if grep -q "autologin-user=" /etc/lightdm/lightdm.conf; then
+        sudo sed -i "s/^#\?autologin-user=.*/autologin-user=${RUN_USER}/" /etc/lightdm/lightdm.conf
+      else
+        sudo sed -i "/^\[Seat:\*\]/a autologin-user=${RUN_USER}" /etc/lightdm/lightdm.conf
+      fi
+    else
+      printf "\n[Seat:*]\nautologin-user=%s\n" "${RUN_USER}" | sudo tee -a /etc/lightdm/lightdm.conf >/dev/null
+    fi
+  else
+    echo "    ATENȚIE: nici raspi-config, nici lightdm.conf găsite."
+    echo "    Setează autologin manual dacă afișajul nu pornește la boot."
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 7. Verificare
+# ---------------------------------------------------------------------------
+echo "==> [7/7] Verificare backend..."
 sleep 3
 if curl -sf "${BACKEND_URL}/api/status" >/dev/null; then
   echo "    Backend OK -> ${BACKEND_URL}/api/status"
@@ -138,12 +165,12 @@ echo
 echo "======================================================================"
 echo " Instalare completă!"
 echo
-echo " Următorii pași:"
-echo "   1. Activează autologin la desktop:  sudo raspi-config"
-echo "      -> System Options -> Boot / Auto Login -> Desktop Autologin"
-echo "   2. Repornește Pi-ul:                sudo reboot"
+echo " Autologin la desktop: configurat automat."
 echo
-echo " După reboot, afișajul pornește singur fullscreen."
+echo " Ultimul pas — repornește Pi-ul:"
+echo "     sudo reboot"
+echo
+echo " După reboot, afișajul pornește singur fullscreen (fără login manual)."
 echo " În casparcg.config (stația de play) adaugă un predefined-client OSC"
 echo " către IP-ul acestui Pi, port 7250."
 echo "======================================================================"
