@@ -259,6 +259,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# On the Raspberry Pi we build the React app into frontend/build and let the
+# backend serve it, so the kiosk points at a single URL/port. In the Emergent
+# preview this directory does not exist, so nothing changes there.
+FRONTEND_BUILD = ROOT_DIR.parent / "frontend" / "build"
+if FRONTEND_BUILD.exists():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount(
+        "/", StaticFiles(directory=str(FRONTEND_BUILD), html=True), name="static"
+    )
+    logger.info("Serving React build from %s", FRONTEND_BUILD)
+
 
 @app.on_event("startup")
 async def on_startup():
