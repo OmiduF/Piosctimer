@@ -1,0 +1,13 @@
+.App {
+  background: #000;
+}
+
+/* Hide scrollbars for kiosk fullscreen */
+html,
+body,
+#root,
+.App {
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
