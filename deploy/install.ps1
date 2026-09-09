@@ -49,7 +49,11 @@ if (-not (Test-Path "venv")) {
   python -m venv venv
 }
 & ".\venv\Scripts\python.exe" -m pip install --upgrade pip
-& ".\venv\Scripts\pip.exe" install -r requirements.txt
+if (Test-Path "requirements-run.txt") {
+  & ".\venv\Scripts\pip.exe" install -r requirements-run.txt
+} else {
+  & ".\venv\Scripts\pip.exe" install -r requirements.txt
+}
 
 if (-not (Test-Path ".env")) {
 @"

@@ -1,0 +1,21 @@
+{
+  "summary": "Regression check after resilience fixes (optional motor import, guarded Mongo init, non-fatal OSC bind). Re-ran full pytest suite against the live supervisor backend at localhost:8001. All 5/5 tests passed in 7.67s: /api/status shape, idle state, OSC sender pipeline (opening_titles.mov ch1 45s / commercial_break.mp4 ch2 20s, time_left math), LIVE status when total=0, and WebSocket /api/ws streaming (immediate frame + continuous frames). Supervisor logs show clean startup: 'OSC UDP listener started on 0.0.0.0:7250' + 'WebSocket broadcast loop started'. No regressions.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py still uses deprecated @app.on_event startup/shutdown; migrate to FastAPI lifespan handler when convenient.",
+    "Mongo client is created at import even though DB is unused; consider deferring or removing until a settings page exists.",
+    "WebSocket endpoint has no ping/keepalive; long-running kiosk clients behind proxies could see stale sockets."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "N/A (skipped per request)"},
+  "seed_data_creation": "None. OSC traffic simulated via /app/backend/test_osc_sender.py inside pytest.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Resilience regression check is green. motor optional-import, guarded Mongo init, and try/except around OSC bind confirmed to not break live behavior. Suite lives at /app/backend/tests/backend_test.py; pytest.ini uses xdist LoadScopeScheduling so OSC-sensitive tests share a worker (avoids UDP 7250 collisions)."
+}

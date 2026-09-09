@@ -8,10 +8,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, WebSocket, WebSocketDisconnect
-from motor.motor_asyncio import AsyncIOMotorClient
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import AsyncIOOSCUDPServer
 from starlette.middleware.cors import CORSMiddleware
+
+try:
+    from motor.motor_asyncio import AsyncIOMotorClient
+except Exception:  # motor/pymongo missing or incompatible -> Mongo is optional
+    AsyncIOMotorClient = None
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -52,13 +56,14 @@ logger = logging.getLogger("timer-caspar")
 # ---------------------------------------------------------------------------
 mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 db_name = os.environ.get("DB_NAME", "timer_caspar")
-try:
-    mongo_client = AsyncIOMotorClient(mongo_url)
-    db = mongo_client[db_name]
-except Exception as exc:  # never block startup on Mongo
-    logger.warning("MongoDB unavailable (%s); continuing without it", exc)
-    mongo_client = None
-    db = None
+mongo_client = None
+db = None
+if AsyncIOMotorClient is not None:
+    try:
+        mongo_client = AsyncIOMotorClient(mongo_url)
+        db = mongo_client[db_name]
+    except Exception as exc:  # never block startup on Mongo
+        logger.warning("MongoDB unavailable (%s); continuing without it", exc)
 
 # ---------------------------------------------------------------------------
 # Live OSC state
@@ -287,10 +292,23 @@ async def on_startup():
     dispatcher = Dispatcher()
     dispatcher.set_default_handler(osc_handler)
 
-    server = AsyncIOOSCUDPServer((OSC_HOST, OSC_PORT), dispatcher, loop)
-    transport, _ = await server.create_serve_endpoint()
-    app.state.osc_transport = transport
-    logger.info("OSC UDP listener started on %s:%s", OSC_HOST, OSC_PORT)
+    # OSC bind must not be fatal: if the UDP port is busy or blocked, the
+    # display (clock + WebSocket) should still come up instead of the whole
+    # app failing to start.
+    try:
+        server = AsyncIOOSCUDPServer((OSC_HOST, OSC_PORT), dispatcher, loop)
+        transport, _ = await server.create_serve_endpoint()
+        app.state.osc_transport = transport
+        logger.info("OSC UDP listener started on %s:%s", OSC_HOST, OSC_PORT)
+    except Exception as exc:
+        app.state.osc_transport = None
+        logger.error(
+            "Could not bind OSC UDP %s:%s (%s). "
+            "App will run without OSC; check the port is free / firewall.",
+            OSC_HOST,
+            OSC_PORT,
+            exc,
+        )
 
     app.state.broadcast_task = asyncio.create_task(broadcast_loop())
     logger.info("WebSocket broadcast loop started")

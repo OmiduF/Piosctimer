@@ -53,7 +53,11 @@ if [ ! -d venv ]; then
   python3 -m venv venv
 fi
 ./venv/bin/pip install --upgrade pip
-./venv/bin/pip install -r requirements.txt
+if [ -f requirements-run.txt ]; then
+  ./venv/bin/pip install -r requirements-run.txt
+else
+  ./venv/bin/pip install -r requirements.txt
+fi
 
 # .env implicit dacă lipsește
 if [ ! -f .env ]; then
