@@ -46,11 +46,19 @@ logging.basicConfig(
 logger = logging.getLogger("timer-caspar")
 
 # ---------------------------------------------------------------------------
-# Mongo (kept minimal; persistence reserved for future settings page)
+# Mongo (kept minimal; persistence reserved for future settings page).
+# Env vars are optional with sane defaults so the backend always boots even
+# without a .env file (e.g. fresh Windows install) and even if Mongo is absent.
 # ---------------------------------------------------------------------------
-mongo_url = os.environ["MONGO_URL"]
-mongo_client = AsyncIOMotorClient(mongo_url)
-db = mongo_client[os.environ["DB_NAME"]]
+mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+db_name = os.environ.get("DB_NAME", "timer_caspar")
+try:
+    mongo_client = AsyncIOMotorClient(mongo_url)
+    db = mongo_client[db_name]
+except Exception as exc:  # never block startup on Mongo
+    logger.warning("MongoDB unavailable (%s); continuing without it", exc)
+    mongo_client = None
+    db = None
 
 # ---------------------------------------------------------------------------
 # Live OSC state
@@ -296,4 +304,5 @@ async def on_shutdown():
     transport = getattr(app.state, "osc_transport", None)
     if transport:
         transport.close()
-    mongo_client.close()
+    if mongo_client:
+        mongo_client.close()

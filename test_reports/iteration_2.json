@@ -1,0 +1,23 @@
+{
+  "summary": "Re-verification of Timer CasparCG backend after Windows launcher script changes (deploy/*.bat, deploy/install.ps1). No server.py changes this iteration. Ran full backend pytest suite (5 tests) covering GET /api/status shape, idle detection, OSC->status pipeline via test_osc_sender.py (filenames + time_left math), LIVE status when total=0, and WebSocket /api/ws streaming. All 5/5 tests passed in 7.89s. Backend code is healthy; user's Windows startup problem is isolated to the launcher environment, not server.py.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py still uses deprecated FastAPI @app.on_event startup/shutdown; migrate to lifespan handler eventually.",
+    "MongoDB client instantiated at import time but unused; requires MONGO_URL/DB_NAME env vars just to boot — on Windows this could cause a KeyError if the launcher does not set them. Consider making Mongo optional or wrap in try/except so backend boots even without Mongo (relevant to the Windows launch issue user is hitting).",
+    "OSC_HOST defaults to 0.0.0.0 which is fine on Linux but on Windows the firewall may block UDP 7250; user-facing docs / launcher should prompt for firewall rule.",
+    "WebSocket endpoint has no server-side ping/keepalive."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "N/A (skipped per request)"},
+  "seed_data_creation": "None. OSC simulated via /app/backend/test_osc_sender.py during test run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend fully green. Windows-specific issue: check that the launcher (.bat/install.ps1) sets MONGO_URL and DB_NAME in backend/.env before starting uvicorn, otherwise `mongo_client = AsyncIOMotorClient(os.environ['MONGO_URL'])` at module import will raise KeyError and the server won't start. This is the most likely Windows-boot failure cause."
+}
