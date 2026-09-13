@@ -72,6 +72,7 @@ if AsyncIOMotorClient is not None:
 osc_state: dict[tuple[int, int], dict] = {}
 osc_packets_received = 0
 osc_last_packet_ts = 0.0
+osc_listening = False  # True once the UDP socket is bound successfully
 
 ADDR_RE = re.compile(
     r"^/channel/(\d+)/stage/layer/(\d+)/(?:foreground/)?file/(time|frame|name|path)$"
@@ -180,6 +181,8 @@ def build_state() -> dict:
         "server_time": now,
         "osc": {
             "port": OSC_PORT,
+            "host": OSC_HOST,
+            "listening": osc_listening,
             "packets": osc_packets_received,
             "connected": bool(osc_last_packet_ts and (now - osc_last_packet_ts) < 5.0),
             "last_packet_age": round(now - osc_last_packet_ts, 2)
@@ -287,6 +290,7 @@ if FRONTEND_BUILD.exists():
 
 @app.on_event("startup")
 async def on_startup():
+    global osc_listening
     loop = asyncio.get_event_loop()
 
     dispatcher = Dispatcher()
@@ -299,9 +303,11 @@ async def on_startup():
         server = AsyncIOOSCUDPServer((OSC_HOST, OSC_PORT), dispatcher, loop)
         transport, _ = await server.create_serve_endpoint()
         app.state.osc_transport = transport
+        osc_listening = True
         logger.info("OSC UDP listener started on %s:%s", OSC_HOST, OSC_PORT)
     except Exception as exc:
         app.state.osc_transport = None
+        osc_listening = False
         logger.error(
             "Could not bind OSC UDP %s:%s (%s). "
             "App will run without OSC; check the port is free / firewall.",

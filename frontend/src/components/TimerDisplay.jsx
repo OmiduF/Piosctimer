@@ -167,6 +167,14 @@ export function TimerDisplay() {
       : [emptyChannel("ch1", 1, 10), emptyChannel("ch2", 2, 10)];
 
   const oscConnected = state?.osc?.connected;
+  const oscListening = state?.osc?.listening;
+  const oscHost = state?.osc?.host ?? "0.0.0.0";
+  const oscPort = state?.osc?.port ?? 7250;
+
+  let oscLabel = "Waiting for CasparCG OSC";
+  if (oscConnected) oscLabel = "OSC receiving";
+  else if (oscListening === false) oscLabel = "OSC listener DOWN (port busy)";
+  else oscLabel = `Waiting for CasparCG OSC (${oscHost}:${oscPort})`;
 
   return (
     <div
@@ -209,10 +217,14 @@ export function TimerDisplay() {
             <>
               <span
                 className={`h-2 w-2 rounded-full ${
-                  oscConnected ? "bg-emerald-500" : "bg-amber-500"
+                  oscConnected
+                    ? "bg-emerald-500"
+                    : oscListening === false
+                    ? "bg-red-500"
+                    : "bg-amber-500"
                 }`}
               />
-              {oscConnected ? "OSC receiving" : "Waiting for CasparCG OSC"}
+              {oscLabel}
             </>
           ) : (
             <>

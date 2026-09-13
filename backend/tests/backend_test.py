@@ -42,8 +42,11 @@ class TestStatusEndpoint:
         assert data["type"] == "state"
         assert "osc" in data
         assert data["osc"]["port"] == OSC_PORT
+        assert data["osc"]["host"] == "0.0.0.0"
+        assert data["osc"]["listening"] is True
         assert "packets" in data["osc"]
         assert "connected" in data["osc"]
+        assert "last_packet_age" in data["osc"]
         assert isinstance(data["channels"], list) and len(data["channels"]) == 2
         ids = {c["id"] for c in data["channels"]}
         assert ids == {"ch1", "ch2"}
@@ -65,6 +68,8 @@ class TestStatusEndpoint:
         _wait_idle()
         r = requests.get(f"{BASE_URL}/api/status", timeout=5)
         data = r.json()
+        assert data["osc"]["listening"] is True
+        assert data["osc"]["connected"] is False
         for c in data["channels"]:
             assert c["status"] == "idle", f"expected idle, got {c}"
             assert c["time_left"] == 0
@@ -158,3 +163,5 @@ class TestWebSocket:
         for f in frames:
             assert f["type"] == "state"
             assert "channels" in f and len(f["channels"]) == 2
+            assert "listening" in f["osc"]
+            assert f["osc"]["listening"] is True

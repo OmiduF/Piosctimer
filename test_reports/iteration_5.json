@@ -1,0 +1,17 @@
+{
+  "summary": "Verified additive changes for OSC listening indicator. Backend /api/status now exposes osc.host='0.0.0.0' and osc.listening=true. WebSocket /api/ws frames include osc.listening. Frontend footer (data-testid=connection-status) renders amber 'Waiting for CasparCG OSC (0.0.0.0:7250)' by default and turns green 'OSC receiving' while the test OSC sender is active. All 5 pytest backend cases pass (state shape, idle state incl. listening=true/connected=false, OSC pipeline w/ opening_titles.mov ch1 & commercial_break.mp4 ch2, live status, WS streaming). Playwright end-to-end run through public REACT_APP_BACKEND_URL confirmed all data-testids (timer-display, wall-clock, channel-panel-ch1/ch2, channel-filename-ch1/ch2, channel-timeleft-ch1/ch2) and both amber->green transitions.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "osc_listening is set only in on_startup; if a future rebind attempt were added, ensure it also updates the flag. Currently fine.",
+    "@app.on_event('startup'/'shutdown') is deprecated in FastAPI in favour of lifespan handlers; consider migrating (non-blocking)."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100%"},
+  "seed_data_creation": "None; used test_osc_sender.py to drive OSC packets.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "OSC listener binds at startup; osc.listening=true is observable at /api/status and via WS. The 'red dot / OSC listener DOWN' branch cannot be reproduced without occupying UDP 7250 before backend start (would require supervisor restart with port held). Not exercised, but code path in TimerDisplay.jsx correctly gates on oscListening===false."
+}
