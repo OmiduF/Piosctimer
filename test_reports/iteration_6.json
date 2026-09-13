@@ -1,0 +1,19 @@
+{
+  "summary": "Verified same-origin WebSocket fix in useTimerSocket.js. The display now connects via wss://<host>/api/ws derived from window.location and never gets stuck on 'Reconnecting…'. Backend regression suite (5/5 pytest) still green. E2E Playwright run against the public REACT_APP_BACKEND_URL confirmed: (1) WS URL is wss://osc-countdown.preview.emergentagent.com/api/ws (same-origin, wss upgraded from https), (2) idle footer reads 'Waiting for CasparCG OSC (0.0.0.0:7250)' in amber, (3) with test_osc_sender.py running the footer flips to green 'OSC receiving', CH1 shows opening_titles.mov counting down and CH2 shows commercial_break.mp4 (amber at 00:17, will turn red <=10s per LEVEL_STYLES), (4) wall clock updates, (5) after sender stops, channel panels revert to IDLE with '—'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": ["Remind Pi operator to re-run `yarn build` on 172.16.50.150 so the new same-origin WS derivation is baked into the served bundle (source fix is verified in preview)."],
+  "critical_code_review_comments": [
+    "useTimerSocket.js correctly derives WS URL from window.location; REACT_APP_BACKEND_URL is no longer needed for the WS and can be removed from the Pi build env to avoid confusion.",
+    "Consider adding an explicit 'connecting…' state distinct from 'reconnecting…' for the very first render, though impact is cosmetic (WS opens within ~200ms).",
+    "Backend still uses deprecated @app.on_event startup/shutdown; migrate to lifespan when convenient."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100%"},
+  "seed_data_creation": "None; used /app/backend/test_osc_sender.py as OSC source.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Frontend WS URL is now same-origin (window.location). Backend unchanged. When testing idle recovery, allow >5s after stopping the OSC sender because backend osc.connected uses a 5s threshold on last_packet_age. Channels revert to idle after 2s (IDLE_TIMEOUT) but the footer OSC receiving badge flips only after 5s.",
+  "rca of the issue": "Kiosk footer was stuck on 'Reconnecting…' from remote browsers because the React bundle on the Pi was built with REACT_APP_BACKEND_URL=http://localhost:8001, so the client tried ws://localhost:8001/api/ws which resolves to the remote user's own machine, not the Pi. Fix: wsUrl() now uses `${window.location.protocol==='https:'?'wss:':'ws:'}//${window.location.host}/api/ws`, guaranteeing the WS targets whatever host the page was loaded from (Pi LAN IP, localhost kiosk, or preview ingress). Mitigation on the Pi: rebuild the frontend (`yarn build`) so the new hook ships in the served bundle."
+}

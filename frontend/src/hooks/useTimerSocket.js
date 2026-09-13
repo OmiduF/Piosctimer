@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-
+// The backend serves this build, so the WebSocket lives on the SAME origin as
+// the page. Deriving the URL from window.location makes the display work no
+// matter which machine opens it (Pi kiosk on localhost, or a remote browser
+// via the Pi's LAN IP) and behind the preview ingress (which routes /api).
 function wsUrl() {
-  const base = BACKEND_URL.replace(/^http/, "ws");
-  return `${base}/api/ws`;
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}/api/ws`;
 }
 
 // Connects to the backend WebSocket and keeps the latest state.
