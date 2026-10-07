@@ -16,7 +16,7 @@ Piosctimer includes a dedicated interface for CasparCG production workflows.
 
 CasparCG interface:
 
-http://<PI-IP>:8001/
+http://your-IP:8001/
 
 It communicates with CasparCG using OSC and provides channel status and timer information.
 
@@ -34,7 +34,7 @@ Piosctimer also provides a dedicated interface for vMix.
 
 vMix interface:
 
-http://<PI-IP>:8001/vmix
+http://Your-IP:8001/vmix
 
 The interface displays information from the vMix API, including:
 
