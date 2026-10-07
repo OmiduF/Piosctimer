@@ -1,157 +1,170 @@
 # Piosctimer
 
-### A lightweight web-based timer for live production, broadcasting and sports events.
+### Web-based production timer for CasparCG, vMix and live production
 
-Piosctimer is a web-based production timer designed for **live broadcasting, sports production, studio workflows and streaming environments**.
+Piosctimer is a lightweight web-based timer designed for **live broadcasting, sports production and professional production workflows**.
 
-The project started from a simple idea: create a dedicated, reliable timer that can be used in a real production environment without depending on a large or complicated broadcast application.
+The application can run on a **Raspberry Pi 4** and provides dedicated interfaces for both **CasparCG** and **vMix** workflows.
 
-The application was developed with the assistance of **Emergent**, an AI-powered development environment, and subsequently tested and refined for real-world use.
-
-> **Tested and running successfully on Raspberry Pi 4.**
+It has been tested in a real production environment and is currently running reliably on Raspberry Pi 4.
 
 ---
 
-## 🎬 What is Piosctimer?
+## 🎬 CasparCG
 
-Piosctimer provides a dedicated timer application that can be deployed on a local network and accessed through a web browser.
+Piosctimer includes a dedicated interface for **CasparCG** production workflows.
 
-The goal is simple:
+The CasparCG interface is available at:
 
-**Start the application → open it from a browser → use the timer in your production workflow.**
+```text
+http://<PI-IP>:8001/
+```
 
-It is particularly useful when a production team needs a dedicated timing tool that can run independently from the main production computer.
+### Screenshot
 
----
+![Piosctimer CasparCG](docs/images/caspar-timer.png)
 
-## 🏟️ Designed for Live Production
-
-Piosctimer was created with real-world broadcast workflows in mind.
-
-Possible use cases include:
-
-- Live sports broadcasts
-- TV and streaming productions
-- Studio productions
-- Match-day production
-- Event production
-- Countdown workflows
-- Production timing
-- Remote operator control
-- Broadcast graphics workflows
-
-It can be used alongside systems such as **vMix, CasparCG and Bitfocus Companion**, depending on the production workflow.
+The CasparCG workflow has been tested with the **latest CasparCG version**.
 
 ---
 
-## 🍓 Raspberry Pi
+## 🎥 vMix
 
-One of the main goals of the project is to make Piosctimer suitable for inexpensive, dedicated hardware.
+A dedicated vMix interface is also available.
 
-### Tested hardware
+```text
+http://<PI-IP>:8001/vmix
+```
+
+### Screenshot
+
+![Piosctimer vMix](docs/images/vmix-timer.png)
+
+This interface is designed specifically for use alongside **vMix production workflows**.
+
+---
+
+## 🍓 Raspberry Pi 4
+
+Piosctimer has been tested and validated on:
 
 **Raspberry Pi 4**
 
-The application has been installed and tested on a Raspberry Pi 4 and has been found to operate reliably in this environment.
+The Raspberry Pi can be used as a dedicated production appliance, allowing the timer to run independently from the main production workstation.
 
-This makes it possible to dedicate a small Raspberry Pi to the timer instead of using a full production workstation.
-
-A typical setup can therefore look like:
+Example:
 
 ```text
-                 Production Network
+                    Production LAN
 
-                       ┌──────────────┐
-                       │ Piosctimer   │
-                       │ Raspberry Pi │
-                       │      4       │
-                       └──────┬───────┘
-                              │
-                         Network / LAN
-                              │
-             ┌────────────────┼────────────────┐
-             │                │                │
-             ▼                ▼                ▼
-          vMix           CasparCG        Companion
-             │
-             ▼
-       Broadcast Output
+                         │
+                         │
+                 ┌───────▼────────┐
+                 │  Raspberry Pi  │
+                 │       4        │
+                 │   Piosctimer   │
+                 └───────┬────────┘
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+              ▼                     ▼
+          CasparCG                 vMix
+          Interface              Interface
+              /                     /vmix
 ```
 
 ---
 
-## 🧩 Project Structure
+## 🚀 Quick Access
 
-The repository is organized into separate application and deployment components:
+Once Piosctimer is running on the Raspberry Pi:
+
+### CasparCG
+
+```text
+http://<PI-IP>:8001/
+```
+
+### vMix
+
+```text
+http://<PI-IP>:8001/vmix
+```
+
+Replace `<PI-IP>` with the IP address of your Raspberry Pi.
+
+---
+
+## ✨ Features
+
+- Web-based production timer
+- Dedicated CasparCG interface
+- Dedicated vMix interface
+- Raspberry Pi 4 compatible
+- Designed for local production networks
+- Suitable for live broadcasting and sports production
+- Lightweight and suitable for dedicated hardware
+- Separate frontend and backend architecture
+- Deployment resources included
+- Testing resources included
+
+---
+
+## 🧪 Tested Environment
+
+Piosctimer has been tested in a real production environment on:
+
+- **Raspberry Pi 4**
+- **CasparCG**
+- **Latest CasparCG version**
+- **vMix**
+
+The application has been running reliably in production testing.
+
+---
+
+## 🤖 Development
+
+Piosctimer was developed with assistance from **Emergent**, an AI-assisted development environment.
+
+The project started from a production requirement and was developed into a working application through iterative testing and validation on real production hardware.
+
+---
+
+## 📁 Project Structure
 
 ```text
 Piosctimer/
-│
-├── backend/        Backend application
-├── frontend/       Web interface
-├── deploy/         Deployment resources
-├── tests/          Automated tests
-├── test_reports/   Test results
-├── memory/         Development/project data
-│
-├── README.md
-└── test_result.md
+├── backend/
+├── frontend/
+├── deploy/
+├── tests/
+├── test_reports/
+├── docs/
+│   └── images/
+│       ├── caspar-timer.png
+│       └── vmix-timer.png
+└── README.md
 ```
-
----
-
-## 🚀 Development
-
-Piosctimer was developed with the help of **Emergent**, an AI-assisted development platform.
-
-The project was not intended to be an academic demonstration or a purely experimental application. The development process focused on reaching a practical result that could actually be deployed and used on production hardware.
-
-The application was subsequently tested on a **Raspberry Pi 4** as part of the validation process.
-
----
-
-## 🧪 Testing
-
-The repository contains dedicated testing resources and test reports.
-
-The application has been tested in a Raspberry Pi 4 environment and is currently considered functional for the intended production use case.
-
-Further testing and improvements are expected as the project evolves.
-
----
-
-## 🔧 Future Development
-
-Possible future improvements include:
-
-- Additional remote-control options
-- More production-oriented controls
-- Improved integration with broadcast systems
-- Additional API endpoints
-- Better integration with Stream Deck / Bitfocus Companion
-- Additional Raspberry Pi deployment options
-- Improved documentation
-- More configurable timer modes
 
 ---
 
 ## 🤝 Contributions
 
-Suggestions, bug reports and improvements are welcome.
+Issues, suggestions and pull requests are welcome.
 
-If you find a problem or have an idea for a feature, feel free to open an **Issue** or submit a **Pull Request**.
+If you find a problem or have an idea for an improvement, please open an issue on GitHub.
 
 ---
 
 ## 📜 License
 
-See the repository for the current license information.
+See the repository for license information.
 
 ---
 
-## 👤 Project
+## 👤 Author
 
-**Piosctimer**  
-Created and maintained by **OmiduF**
+**OmiduF**
 
-GitHub: https://github.com/OmiduF/Piosctimer
+Built for real-world live production workflows.
