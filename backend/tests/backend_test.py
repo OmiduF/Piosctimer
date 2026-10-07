@@ -165,3 +165,50 @@ class TestWebSocket:
             assert "channels" in f and len(f["channels"]) == 2
             assert "listening" in f["osc"]
             assert f["osc"]["listening"] is True
+            assert "vmix" in f
+
+
+# ---------------------------------------------------------------------------
+# vMix integration (mock vMix at 127.0.0.1:8088)
+# ---------------------------------------------------------------------------
+class TestVmix:
+    def test_status_includes_vmix_block(self):
+        r = requests.get(f"{BASE_URL}/api/status", timeout=5)
+        assert r.status_code == 200
+        v = r.json()["vmix"]
+        for k in ("connected", "host", "port", "error", "program", "preview"):
+            assert k in v, f"missing vmix.{k}"
+        assert v["host"] == "127.0.0.1"
+        assert v["port"] == 8088
+
+    def test_vmix_connected_via_mock(self):
+        r = requests.get(f"{LOCAL_URL}/api/status", timeout=5)
+        v = r.json()["vmix"]
+        assert v["connected"] is True, f"expected vmix.connected True, got {v}"
+        assert v["error"] in ("", None)
+
+    def test_vmix_program_payload(self):
+        r = requests.get(f"{LOCAL_URL}/api/status", timeout=5)
+        p = r.json()["vmix"]["program"]
+        assert p["role"] == "program"
+        assert p["number"] == "1"
+        assert p["title"] == "OPENING_SHOW.mp4"
+        assert p["status"] == "playing"
+        assert abs(p["total"] - 60.0) < 0.5
+        # time_left == total - elapsed (within rounding)
+        assert abs(p["time_left"] - (p["total"] - p["elapsed"])) < 0.2
+
+    def test_vmix_preview_payload(self):
+        r = requests.get(f"{LOCAL_URL}/api/status", timeout=5)
+        p = r.json()["vmix"]["preview"]
+        assert p["role"] == "preview"
+        assert p["number"] == "2"
+        assert p["title"] == "SPONSOR_BUMPER.mp4"
+        assert p["status"] == "playing"
+        assert abs(p["total"] - 30.0) < 0.5
+
+    def test_vmix_time_left_decreases(self):
+        r1 = requests.get(f"{LOCAL_URL}/api/status", timeout=5).json()["vmix"]["program"]
+        time.sleep(1.2)
+        r2 = requests.get(f"{LOCAL_URL}/api/status", timeout=5).json()["vmix"]["program"]
+        assert r2["time_left"] < r1["time_left"], f"time_left not decreasing: {r1} -> {r2}"

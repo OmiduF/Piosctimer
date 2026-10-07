@@ -1,0 +1,19 @@
+{
+  "summary": "Verified new vMix mode end-to-end alongside existing CasparCG OSC flow. Backend pytest suite now 10/10 passing (added 5 TestVmix cases covering /api/status vmix block shape, mock-reachable connected=true, program (OPENING_SHOW.mp4, in#1, 60s, playing), preview (SPONSOR_BUMPER.mp4, in#2, 30s, playing), and monotonically-decreasing time_left). Existing CasparCG OSC tests + WebSocket streaming still green; WS frames now include both 'channels' and 'vmix'. Frontend verified via Playwright on public REACT_APP_BACKEND_URL: '/' renders timer-display, '/vmix' renders vmix-display, source-switcher visible on both with switch-casparcg / switch-vmix links that navigate client-side, and direct deep-link to /vmix loads correctly (SPA catch-all works). vMix page shows PROGRAM panel with 'On Air' badge + OPENING_SHOW.mp4 + vmix-program-timeleft (observed 00:42 -> 00:41 ticking), PREVIEW panel with 'Next' badge + SPONSOR_BUMPER.mp4 + vmix-preview-timeleft (00:12 amber because <=30s), wall-clock updating, and footer vmix-connection-status reads 'vMix connected' with green dot. CasparCG footer connection-status unchanged ('Waiting for CasparCG OSC (0.0.0.0:7250)' when idle).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Console shows a transient 'WebSocket is closed before the connection is established' warning on navigation; this is React 18 StrictMode / route-change cleanup firing before onopen and is cosmetic since the WS reconnects immediately and data flows (timeleft ticks). Safe to ignore but could be suppressed by waiting for readyState>=OPEN before close.",
+    "vMix poll interval (0.3s) + broadcast (0.2s) + mock running inside the pod yields sub-second refresh; good for Pi kiosk. On real network to 172.16.50.25 ensure VMIX_TIMEOUT=2.0 is still sufficient under load.",
+    "Deprecated FastAPI @app.on_event startup/shutdown still used (same note as previous iteration) — migrate to lifespan when touching server.py again."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100%"},
+  "seed_data_creation": "None; mock vMix at /tmp/mock_vmix.py (pid still running on 127.0.0.1:8088) and /app/backend/test_osc_sender.py served as sources.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Mock vMix (pid from /tmp/mock_vmix.py) must be running on 127.0.0.1:8088 for TestVmix to pass; it is currently up. Backend .env points VMIX_HOST=127.0.0.1 VMIX_PORT=8088 — in prod this will be 172.16.50.25:8088. SPA catch-all route serves /vmix deep links. CasparCG and vMix paths are independent — OSC flow unaffected by vMix feature. WebSocket at /api/ws now includes both 'channels' (CasparCG) and 'vmix' sections every ~200ms.",
+  "rca of the issue": "N/A — feature verification, no bugs found."
+}

@@ -35,3 +35,9 @@ Playout operator watching the Pi monitor for the clock and remaining time on ch1
 
 ## CasparCG setup note
 On the playout station's `casparcg.config`, add a `predefined-client` OSC pointing to the Pi's IP, port 7250.
+
+## vMix mode (added 2026-10)
+- Second display at route `/vmix` alongside CasparCG at `/`; an on-screen `SourceSwitcher` (top-right) toggles between them. SPA deep links handled by a backend catch-all serving index.html.
+- Backend polls the vMix Web API XML at `http://VMIX_HOST:VMIX_PORT/api/` (httpx), reads `<active>`/`<preview>` input numbers, computes `time_left=(duration-position)/1000`, and adds a `vmix` section to the WebSocket state (program + preview). Live inputs (duration 0) show `LIVE/--:--`.
+- Config in backend/.env: `VMIX_HOST=172.16.50.25`, `VMIX_PORT=8088`, `VMIX_POLL_INTERVAL=0.3`, `VMIX_TIMEOUT=2.0`.
+- Frontend WebSocket uses same-origin (window.location) so the kiosk works from any machine.
