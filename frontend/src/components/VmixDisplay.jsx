@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Radio, WifiOff, Clapperboard } from "lucide-react";
+import { Radio, WifiOff, Clapperboard, Eye } from "lucide-react";
 import { useTimerSocket } from "@/hooks/useTimerSocket";
 import { SourceSwitcher } from "@/components/SourceSwitcher";
 
@@ -16,7 +16,6 @@ function pad(n) {
   return String(n).padStart(2, "0");
 }
 
-// Always MM:SS (per requirement)
 function formatTimeLeft(seconds) {
   const s = Math.max(0, Math.floor(seconds));
   const m = Math.floor(s / 60);
@@ -43,7 +42,37 @@ const LEVEL_STYLES = {
   live: { text: "text-sky-400", accent: "bg-sky-500", glow: "" },
 };
 
-function ChannelPanel({ data }) {
+function RoleBadge({ role, status }) {
+  const isProgram = role === "program";
+  if (status === "live") {
+    return (
+      <span className="flex items-center gap-1.5 rounded-full bg-sky-500/15 px-2.5 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-sky-400">
+        <Radio size="0.9em" /> Live
+      </span>
+    );
+  }
+  if (status === "idle") {
+    return (
+      <span className="rounded-full bg-neutral-800/70 px-2.5 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-neutral-500">
+        Idle
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest ${
+        isProgram
+          ? "bg-red-500/15 text-red-400"
+          : "bg-emerald-500/15 text-emerald-400"
+      }`}
+    >
+      {isProgram ? <Clapperboard size="0.9em" /> : <Eye size="0.9em" />}
+      {isProgram ? "On Air" : "Next"}
+    </span>
+  );
+}
+
+function VmixPanel({ data, label }) {
   const level = levelFor(data.status, data.time_left);
   const style = LEVEL_STYLES[level] || LEVEL_STYLES.idle;
   const isDanger = level === "danger";
@@ -52,67 +81,50 @@ function ChannelPanel({ data }) {
       ? Math.min(100, (data.elapsed / data.total) * 100)
       : 0;
 
+  const timeText =
+    data.status === "playing" ? formatTimeLeft(data.time_left) : "--:--";
+
   return (
     <div
-      data-testid={`channel-panel-${data.id}`}
+      data-testid={`vmix-${data.role}-panel`}
       className="relative flex flex-1 items-center overflow-hidden border-t border-neutral-800/80 px-[4vw]"
     >
-      {/* left accent bar */}
       <div className={`absolute left-0 top-0 h-full w-[8px] ${style.accent}`} />
 
       <div className="flex w-full items-center justify-between gap-6">
-        {/* label + filename */}
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex items-center gap-3">
             <span className="font-mono text-[1.6vw] font-bold uppercase tracking-[0.35em] text-neutral-400">
-              CH{data.channel}
+              {label}
             </span>
-            <span className="rounded-sm bg-neutral-800/70 px-2 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-neutral-500">
-              L{data.layer}
-            </span>
-            <StatusBadge status={data.status} />
+            {data.number != null && data.status !== "idle" && (
+              <span className="rounded-sm bg-neutral-800/70 px-2 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-neutral-500">
+                IN {data.number}
+              </span>
+            )}
+            <RoleBadge role={data.role} status={data.status} />
           </div>
           <div
-            data-testid={`channel-filename-${data.id}`}
+            data-testid={`vmix-${data.role}-title`}
             className="truncate font-mono text-[1.5vw] text-neutral-300"
-            title={data.filename}
+            title={data.title}
           >
-            {data.filename || (data.status === "idle" ? "—" : "—")}
+            {data.title || "—"}
           </div>
         </div>
 
-        {/* countdown */}
         <div className="shrink-0 text-right">
-          {data.status === "playing" && (
-            <div
-              data-testid={`channel-timeleft-${data.id}`}
-              className={`font-mono font-bold leading-none tabular-nums text-[13vw] ${style.text} ${style.glow} ${
-                isDanger ? "animate-pulse" : ""
-              }`}
-            >
-              {formatTimeLeft(data.time_left)}
-            </div>
-          )}
-          {data.status === "live" && (
-            <div
-              data-testid={`channel-timeleft-${data.id}`}
-              className={`font-mono font-bold leading-none text-[13vw] ${style.text}`}
-            >
-              --:--
-            </div>
-          )}
-          {data.status === "idle" && (
-            <div
-              data-testid={`channel-timeleft-${data.id}`}
-              className={`font-mono font-bold leading-none text-[13vw] ${style.text}`}
-            >
-              --:--
-            </div>
-          )}
+          <div
+            data-testid={`vmix-${data.role}-timeleft`}
+            className={`font-mono font-bold leading-none tabular-nums text-[13vw] ${style.text} ${style.glow} ${
+              isDanger ? "animate-pulse" : ""
+            }`}
+          >
+            {timeText}
+          </div>
         </div>
       </div>
 
-      {/* progress bar */}
       <div className="absolute bottom-0 left-0 h-[6px] w-full bg-neutral-900">
         <div
           className={`h-full transition-[width] duration-200 ease-linear ${style.accent}`}
@@ -123,63 +135,28 @@ function ChannelPanel({ data }) {
   );
 }
 
-function StatusBadge({ status }) {
-  if (status === "playing") {
-    return (
-      <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-emerald-400">
-        <Clapperboard size="0.9em" /> On Air
-      </span>
-    );
-  }
-  if (status === "live") {
-    return (
-      <span className="flex items-center gap-1.5 rounded-full bg-sky-500/15 px-2.5 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-sky-400">
-        <Radio size="0.9em" /> Live
-      </span>
-    );
-  }
-  return (
-    <span className="rounded-full bg-neutral-800/70 px-2.5 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-neutral-500">
-      Idle
-    </span>
-  );
-}
+const emptyInput = (role) => ({
+  role,
+  number: null,
+  title: "",
+  elapsed: 0,
+  total: 0,
+  time_left: 0,
+  status: "idle",
+});
 
-function emptyChannel(id, channel, layer) {
-  return {
-    id,
-    channel,
-    layer,
-    filename: "",
-    elapsed: 0,
-    total: 0,
-    time_left: 0,
-    status: "idle",
-  };
-}
-
-export function TimerDisplay() {
+export function VmixDisplay() {
   const now = useClock();
   const { state, connected } = useTimerSocket();
 
-  const channels =
-    state?.channels && state.channels.length
-      ? state.channels
-      : [emptyChannel("ch1", 1, 10), emptyChannel("ch2", 2, 10)];
-
-  const oscConnected = state?.osc?.connected;
-  const oscListening = state?.osc?.listening;
-  const oscHost = state?.osc?.host ?? "0.0.0.0";
-  const oscPort = state?.osc?.port ?? 7250;
-
-  let oscLabel = "Waiting for CasparCG OSC";
-  if (oscConnected) oscLabel = "OSC receiving";
-  else if (oscListening === false) oscLabel = "OSC listener DOWN (port busy)";
-  else oscLabel = `Waiting for CasparCG OSC (${oscHost}:${oscPort})`;
+  const vmix = state?.vmix;
+  const program = vmix?.program || emptyInput("program");
+  const preview = vmix?.preview || emptyInput("preview");
+  const vmixOnline = vmix?.connected;
 
   return (
     <div
-      data-testid="timer-display"
+      data-testid="vmix-display"
       className="flex h-screen w-screen flex-col overflow-hidden bg-black text-white"
     >
       <SourceSwitcher />
@@ -187,7 +164,7 @@ export function TimerDisplay() {
       {/* Clock */}
       <div className="flex flex-[0.9] flex-col items-center justify-center px-[4vw]">
         <div className="mb-2 font-mono text-[1.1vw] uppercase tracking-[0.6em] text-neutral-500">
-          Local Time
+          vMix · Local Time
         </div>
         <div
           data-testid="wall-clock"
@@ -201,17 +178,16 @@ export function TimerDisplay() {
         </div>
       </div>
 
-      {/* Channels stacked */}
-      <ChannelPanel data={channels[0]} />
-      <ChannelPanel data={channels[1]} />
+      <VmixPanel data={program} label="Program" />
+      <VmixPanel data={preview} label="Preview" />
 
       {/* Connection footer */}
       <div className="flex items-center justify-between border-t border-neutral-900 px-[3vw] py-2 font-mono text-[0.8vw] uppercase tracking-widest">
         <span className="flex items-center gap-2 text-neutral-600">
-          Timer CasparCG · OSC {state?.osc?.port ?? 7250}
+          vMix API {vmix?.host ?? "—"}:{vmix?.port ?? 8088}
         </span>
         <span
-          data-testid="connection-status"
+          data-testid="vmix-connection-status"
           className={`flex items-center gap-2 ${
             connected ? "text-neutral-500" : "text-red-500 animate-pulse"
           }`}
@@ -220,14 +196,12 @@ export function TimerDisplay() {
             <>
               <span
                 className={`h-2 w-2 rounded-full ${
-                  oscConnected
-                    ? "bg-emerald-500"
-                    : oscListening === false
-                    ? "bg-red-500"
-                    : "bg-amber-500"
+                  vmixOnline ? "bg-emerald-500" : "bg-red-500"
                 }`}
               />
-              {oscLabel}
+              {vmixOnline
+                ? "vMix connected"
+                : `vMix offline (${vmix?.host ?? ""}:${vmix?.port ?? 8088})`}
             </>
           ) : (
             <>

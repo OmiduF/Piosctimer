@@ -4,8 +4,10 @@ import logging
 import os
 import re
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, WebSocket, WebSocketDisconnect
 from pythonosc.dispatcher import Dispatcher
@@ -39,6 +41,12 @@ CHANNELS = [
         "layer": int(os.environ.get("CH2_LAYER", "10")),
     },
 ]
+
+# vMix Web API (XML polling). vMix does not push; we poll http://host:port/api/
+VMIX_HOST = os.environ.get("VMIX_HOST", "172.16.50.25")
+VMIX_PORT = int(os.environ.get("VMIX_PORT", "8088"))
+VMIX_POLL_INTERVAL = float(os.environ.get("VMIX_POLL_INTERVAL", "0.3"))
+VMIX_TIMEOUT = float(os.environ.get("VMIX_TIMEOUT", "2.0"))
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -174,6 +182,101 @@ def build_channel_payload(cfg: dict) -> dict:
     return base
 
 
+# ---------------------------------------------------------------------------
+# vMix state (polled from the vMix Web API XML)
+# ---------------------------------------------------------------------------
+vmix_inputs: dict[str, dict] = {}
+vmix_active = None   # program input number (string)
+vmix_preview = None  # preview input number (string)
+vmix_last_ok = 0.0
+vmix_last_error = ""
+
+
+def _to_float(value) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def parse_vmix(xml_text: str):
+    global vmix_inputs, vmix_active, vmix_preview
+    root = ET.fromstring(xml_text)
+    inputs = {}
+    for inp in root.iter("input"):
+        num = inp.get("number")
+        if num is None:
+            continue
+        inputs[num] = {
+            "title": inp.get("title", "") or inp.get("shortTitle", ""),
+            "state": inp.get("state", ""),
+            "position": _to_float(inp.get("position")),
+            "duration": _to_float(inp.get("duration")),
+        }
+    vmix_inputs = inputs
+    vmix_active = root.findtext("active")
+    vmix_preview = root.findtext("preview")
+
+
+def build_vmix_input_payload(role: str, number) -> dict:
+    base = {
+        "role": role,
+        "number": number,
+        "title": "",
+        "elapsed": 0.0,
+        "total": 0.0,
+        "time_left": 0.0,
+        "status": "idle",
+    }
+    if number is None:
+        return base
+    inp = vmix_inputs.get(str(number))
+    if not inp:
+        return base
+
+    total = inp["duration"] / 1000.0
+    elapsed = inp["position"] / 1000.0
+    base["title"] = inp["title"]
+    base["number"] = number
+
+    # No duration (camera / NDI / live) -> LIVE
+    if total <= 0.05:
+        base["status"] = "live"
+        return base
+
+    base.update(
+        {
+            "elapsed": round(elapsed, 2),
+            "total": round(total, 2),
+            "time_left": round(max(0.0, total - elapsed), 2),
+            "status": "playing",
+        }
+    )
+    return base
+
+
+def build_vmix_state() -> dict:
+    now = time.time()
+    connected = bool(vmix_last_ok and (now - vmix_last_ok) < 3.0)
+    if not connected:
+        return {
+            "connected": False,
+            "host": VMIX_HOST,
+            "port": VMIX_PORT,
+            "error": vmix_last_error,
+            "program": build_vmix_input_payload("program", None),
+            "preview": build_vmix_input_payload("preview", None),
+        }
+    return {
+        "connected": True,
+        "host": VMIX_HOST,
+        "port": VMIX_PORT,
+        "error": "",
+        "program": build_vmix_input_payload("program", vmix_active),
+        "preview": build_vmix_input_payload("preview", vmix_preview),
+    }
+
+
 def build_state() -> dict:
     now = time.time()
     return {
@@ -190,6 +293,7 @@ def build_state() -> dict:
             else None,
         },
         "channels": [build_channel_payload(cfg) for cfg in CHANNELS],
+        "vmix": build_vmix_state(),
     }
 
 
@@ -231,6 +335,25 @@ async def broadcast_loop():
         except Exception as exc:  # keep the loop alive
             logger.error("broadcast_loop error: %s", exc)
         await asyncio.sleep(0.2)
+
+
+async def vmix_poll_loop():
+    """Poll the vMix Web API XML and keep program/preview state fresh."""
+    global vmix_last_ok, vmix_last_error
+    url = f"http://{VMIX_HOST}:{VMIX_PORT}/api/"
+    async with httpx.AsyncClient(timeout=VMIX_TIMEOUT) as client:
+        while True:
+            try:
+                r = await client.get(url)
+                if r.status_code == 200:
+                    parse_vmix(r.text)
+                    vmix_last_ok = time.time()
+                    vmix_last_error = ""
+                else:
+                    vmix_last_error = f"HTTP {r.status_code}"
+            except Exception as exc:
+                vmix_last_error = str(exc)[:120]
+            await asyncio.sleep(VMIX_POLL_INTERVAL)
 
 
 # ---------------------------------------------------------------------------
@@ -280,11 +403,24 @@ app.add_middleware(
 # preview this directory does not exist, so nothing changes there.
 FRONTEND_BUILD = ROOT_DIR.parent / "frontend" / "build"
 if FRONTEND_BUILD.exists():
+    from fastapi.responses import FileResponse
     from fastapi.staticfiles import StaticFiles
 
     app.mount(
-        "/", StaticFiles(directory=str(FRONTEND_BUILD), html=True), name="static"
+        "/static",
+        StaticFiles(directory=str(FRONTEND_BUILD / "static")),
+        name="static",
     )
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Serve real files (favicon, manifest, ...) and fall back to index.html
+        # for client-side routes like /vmix so deep links / refresh work.
+        candidate = FRONTEND_BUILD / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(str(candidate))
+        return FileResponse(str(FRONTEND_BUILD / "index.html"))
+
     logger.info("Serving React build from %s", FRONTEND_BUILD)
 
 
@@ -319,12 +455,18 @@ async def on_startup():
     app.state.broadcast_task = asyncio.create_task(broadcast_loop())
     logger.info("WebSocket broadcast loop started")
 
+    app.state.vmix_task = asyncio.create_task(vmix_poll_loop())
+    logger.info("vMix poll loop started (target %s:%s)", VMIX_HOST, VMIX_PORT)
+
 
 @app.on_event("shutdown")
 async def on_shutdown():
     task = getattr(app.state, "broadcast_task", None)
     if task:
         task.cancel()
+    vmix_task = getattr(app.state, "vmix_task", None)
+    if vmix_task:
+        vmix_task.cancel()
     transport = getattr(app.state, "osc_transport", None)
     if transport:
         transport.close()
