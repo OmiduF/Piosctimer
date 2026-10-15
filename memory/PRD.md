@@ -41,3 +41,8 @@ On the playout station's `casparcg.config`, add a `predefined-client` OSC pointi
 - Backend polls the vMix Web API XML at `http://VMIX_HOST:VMIX_PORT/api/` (httpx), reads `<active>`/`<preview>` input numbers, computes `time_left=(duration-position)/1000`, and adds a `vmix` section to the WebSocket state (program + preview). Live inputs (duration 0) show `LIVE/--:--`.
 - Config in backend/.env: `VMIX_HOST=172.16.50.25`, `VMIX_PORT=8088`, `VMIX_POLL_INTERVAL=0.3`, `VMIX_TIMEOUT=2.0`.
 - Frontend WebSocket uses same-origin (window.location) so the kiosk works from any machine.
+
+## Settings page (added 2026-10)
+- Route `/settings` (gear icon in SourceSwitcher). Edit vMix IP/port, OSC UDP port, channel/layer for Timer 1 & 2. Applied live (vMix poller reads current host each loop; OSC listener is re-bound on port change).
+- API: `GET /api/settings`, `PUT /api/settings` (pydantic validation, host regex). Persisted to `backend/settings.json` (git-ignored, overrides .env, no MongoDB needed).
+- Remaining backlog: P1 sound alarm <10s, P2 Pi IP on screen, P2 kiosk exit shortcut, P2 font sizes in settings.

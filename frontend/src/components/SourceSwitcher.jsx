@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
+import { Settings } from "lucide-react";
 
 // Subtle segmented control (top-right) to switch the kiosk display between the
 // CasparCG and vMix sources. Semi-transparent so it stays out of the way.
@@ -31,6 +32,14 @@ export function SourceSwitcher() {
           </Link>
         );
       })}
+      <Link
+        to="/settings"
+        data-testid="switch-settings"
+        title="Setări"
+        className="flex items-center rounded-full px-3 text-neutral-500 transition-colors hover:text-white"
+      >
+        <Settings size="0.9vw" />
+      </Link>
     </div>
   );
 }

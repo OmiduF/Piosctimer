@@ -9,7 +9,8 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import AsyncIOOSCUDPServer
 from starlette.middleware.cors import CORSMiddleware
@@ -45,6 +46,41 @@ CHANNELS = [
 # vMix Web API (XML polling). vMix does not push; we poll http://host:port/api/
 VMIX_HOST = os.environ.get("VMIX_HOST", "172.16.50.25")
 VMIX_PORT = int(os.environ.get("VMIX_PORT", "8088"))
+
+# Runtime settings editable from the /settings page, persisted to settings.json
+# (overrides .env values; survives git pull since the file is git-ignored).
+SETTINGS_FILE = ROOT_DIR / "settings.json"
+
+
+def _load_settings():
+    global VMIX_HOST, VMIX_PORT, OSC_PORT
+    if not SETTINGS_FILE.exists():
+        return
+    try:
+        data = json.loads(SETTINGS_FILE.read_text())
+    except Exception:
+        return
+    VMIX_HOST = data.get("vmix_host", VMIX_HOST)
+    VMIX_PORT = int(data.get("vmix_port", VMIX_PORT))
+    OSC_PORT = int(data.get("osc_port", OSC_PORT))
+    for cfg, saved in zip(CHANNELS, data.get("channels", [])):
+        cfg["channel"] = int(saved.get("channel", cfg["channel"]))
+        cfg["layer"] = int(saved.get("layer", cfg["layer"]))
+
+
+def current_settings() -> dict:
+    return {
+        "vmix_host": VMIX_HOST,
+        "vmix_port": VMIX_PORT,
+        "osc_port": OSC_PORT,
+        "channels": [
+            {"id": c["id"], "channel": c["channel"], "layer": c["layer"]}
+            for c in CHANNELS
+        ],
+    }
+
+
+_load_settings()
 VMIX_POLL_INTERVAL = float(os.environ.get("VMIX_POLL_INTERVAL", "0.3"))
 VMIX_TIMEOUT = float(os.environ.get("VMIX_TIMEOUT", "2.0"))
 
@@ -340,11 +376,10 @@ async def broadcast_loop():
 async def vmix_poll_loop():
     """Poll the vMix Web API XML and keep program/preview state fresh."""
     global vmix_last_ok, vmix_last_error
-    url = f"http://{VMIX_HOST}:{VMIX_PORT}/api/"
     async with httpx.AsyncClient(timeout=VMIX_TIMEOUT) as client:
         while True:
             try:
-                r = await client.get(url)
+                r = await client.get(f"http://{VMIX_HOST}:{VMIX_PORT}/api/")
                 if r.status_code == 200:
                     parse_vmix(r.text)
                     vmix_last_ok = time.time()
@@ -371,6 +406,41 @@ async def root():
 @api_router.get("/status")
 async def status():
     return build_state()
+
+
+class ChannelSettings(BaseModel):
+    channel: int = Field(ge=1, le=999)
+    layer: int = Field(ge=0, le=9999)
+
+
+class SettingsIn(BaseModel):
+    vmix_host: str = Field(min_length=1, max_length=255)
+    vmix_port: int = Field(ge=1, le=65535)
+    osc_port: int = Field(ge=1, le=65535)
+    channels: list[ChannelSettings] = Field(min_length=2, max_length=2)
+
+
+@api_router.get("/settings")
+async def get_settings():
+    return current_settings()
+
+
+@api_router.put("/settings")
+async def put_settings(body: SettingsIn):
+    global VMIX_HOST, VMIX_PORT, vmix_last_ok, vmix_last_error
+    host = body.vmix_host.strip()
+    if not re.fullmatch(r"[A-Za-z0-9.\-]+", host):
+        raise HTTPException(status_code=422, detail="IP/host vMix invalid")
+    if (host, body.vmix_port) != (VMIX_HOST, VMIX_PORT):
+        VMIX_HOST, VMIX_PORT = host, body.vmix_port
+        vmix_last_ok, vmix_last_error = 0.0, ""
+    for cfg, new in zip(CHANNELS, body.channels):
+        cfg["channel"], cfg["layer"] = new.channel, new.layer
+    if body.osc_port != OSC_PORT:
+        await start_osc(body.osc_port)
+    SETTINGS_FILE.write_text(json.dumps(current_settings(), indent=2))
+    logger.info("Settings updated: %s", current_settings())
+    return current_settings()
 
 
 @api_router.websocket("/ws")
@@ -424,19 +494,19 @@ if FRONTEND_BUILD.exists():
     logger.info("Serving React build from %s", FRONTEND_BUILD)
 
 
-@app.on_event("startup")
-async def on_startup():
-    global osc_listening
-    loop = asyncio.get_event_loop()
-
+async def start_osc(port: int):
+    """(Re)bind the OSC UDP listener. Failure is never fatal."""
+    global osc_listening, OSC_PORT
+    old = getattr(app.state, "osc_transport", None)
+    if old:
+        old.close()
+    OSC_PORT = port
     dispatcher = Dispatcher()
     dispatcher.set_default_handler(osc_handler)
-
-    # OSC bind must not be fatal: if the UDP port is busy or blocked, the
-    # display (clock + WebSocket) should still come up instead of the whole
-    # app failing to start.
     try:
-        server = AsyncIOOSCUDPServer((OSC_HOST, OSC_PORT), dispatcher, loop)
+        server = AsyncIOOSCUDPServer(
+            (OSC_HOST, OSC_PORT), dispatcher, asyncio.get_event_loop()
+        )
         transport, _ = await server.create_serve_endpoint()
         app.state.osc_transport = transport
         osc_listening = True
@@ -451,6 +521,11 @@ async def on_startup():
             OSC_PORT,
             exc,
         )
+
+
+@app.on_event("startup")
+async def on_startup():
+    await start_osc(OSC_PORT)
 
     app.state.broadcast_task = asyncio.create_task(broadcast_loop())
     logger.info("WebSocket broadcast loop started")
