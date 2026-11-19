@@ -51,3 +51,7 @@ On the playout station's `casparcg.config`, add a `predefined-client` OSC pointi
 - Route `/ota` (tab "OnTheAir" in switcher). Backend `ota_poll_loop` connects to Softron HyperDeck emulation (TCP 9993), polls `transport info` + `clips get`, computes time left from clip duration − timecode (fps from video format). States: playing / paused / idle.
 - Settings: `ota_host`, `ota_port` in /settings (applied live, persisted). Fixed busy-loop CPU bug on unreachable host.
 - Dev mock: `backend/mock_hyperdeck.py`. Needs check on real Express 6: whether timecode is clip-relative or absolute.
+
+## 3 OnTheAir outputs + macOS (added 2026-11)
+- `/ota` now shows clock + 3 stacked timers. Settings: `ota_host` (one Mac) + `ota_outputs` [{name, port}] ×3 (defaults 9993/9994/9995). One HyperDeck poll loop per output, independent reconnects.
+- macOS: `deploy/install-mac.sh` (venv + build) and `deploy/start-timer-mac.command` (double-click: backend + Chrome kiosk). Docs `deploy/MAC_SETUP.md`.

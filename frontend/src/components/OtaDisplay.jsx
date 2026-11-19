@@ -13,7 +13,7 @@ function StatusBadge({ status, testId }) {
   const b = BADGES[status];
   if (!b) {
     return (
-      <span className="rounded-full bg-neutral-800/70 px-2.5 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-neutral-500">
+      <span data-testid={testId} className="rounded-full bg-neutral-800/70 px-2.5 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-neutral-500">
         Idle
       </span>
     );
@@ -41,7 +41,7 @@ function OtaPanel({ output, index }) {
           <div className="flex items-center gap-3">
             <span data-testid={`ota-output-${index + 1}-name`} className="font-mono text-[1.4vw] font-bold uppercase tracking-[0.3em] text-neutral-400">{output.name}</span>
             {!output.connected && (
-              <span className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-red-400">
+              <span data-testid={`ota-output-${index + 1}-offline`} className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-0.5 font-mono text-[0.85vw] uppercase tracking-widest text-red-400">
                 <WifiOff size="0.9em" /> Offline :{output.port}
               </span>
             )}

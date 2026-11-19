@@ -1,0 +1,30 @@
+{
+  "summary": "Tested the 3-output OnTheAir version and the macOS scripts. Backend: rewrote tests/test_ota.py for the ota_outputs schema; all 17 OTA/settings/OSC/WS tests pass. The 5 failures are all in TestVmix (backend_test.py): those older tests expect a vMix mock on 127.0.0.1, but vMix is set to 172.16.50.25 and offline as expected, so they are not regressions. Frontend: /ota shows the clock plus 3 stacked panels with the correct names, clip titles (9993/9994/9995.mov), ON AIR badges and countdowns that go down. Footer shows 'OnTheAir 3/3 connected'. Setting output 2 to port 9999 in /settings shows an 'Offline :9999' badge with --:--, the footer drops to 2/3 and outputs 1 and 3 are unaffected. Restoring 9994 reconnects in 0.2s. Renamed outputs show on /ota and persist after reload and in settings.json. An invalid host shows the red error message. uvicorn CPU stays around 0% while a port is unreachable. Regression: /, /vmix, the switcher tabs and the OSC settings work. bash -n passes for install-mac.sh and start-timer-mac.command, and both are executable (git mode 100755). Settings restored to defaults at the end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "OtaDisplay StatusBadge", "issue": "The Idle badge has no data-testid, so ota-output-N-status is missing when an output is connected but idle", "selector": "ota-output-N-status", "priority": "LOW"},
+      {"component": "OtaDisplay offline badge", "issue": "The 'Offline :port' badge has no data-testid", "selector": "n/a", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_ota.py", "/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional: add data-testid to the Idle badge and the Offline badge in OtaDisplay.jsx",
+    "Optional: update the stale docstring in mock_hyperdeck.py (it says 'Plays clip 2 (90s)', but the duration now depends on the port)",
+    "Optional: start-timer-mac.command opens the browser even if uvicorn failed (e.g. port 8001 busy). Check the curl result and print an error. Consider adding HUP to the trap.",
+    "Optional: the MAC_SETUP.md update steps do not re-run pip install for requirements-run.txt"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 771 lines (over 700); consider moving the HyperDeck/OTA client into its own module",
+    "_load_settings migrates the legacy ota_port to output 1. This works, and the settings.json written now uses ota_outputs.",
+    "Duplicate ports across outputs are accepted without a warning (minor)"
+  ],
+  "updated_files": ["/app/backend/tests/test_ota.py"],
+  "success_rate": {"backend": "100% of in-scope tests (17/17); 5 legacy vMix-mock tests fail as expected because vMix is offline", "frontend": "100%"},
+  "seed_data_creation": "None. Temporary TEST_ names were set and then reverted to Output 1/2/3.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Mocks on 9993/9994/9995 give clip durations of 40/65/90s. Run pytest with -n0 (pytest.ini uses xdist, and the tests share global settings). The TestVmix tests in backend_test.py need a vMix mock on 127.0.0.1 and vmix_host set to 127.0.0.1. Defaults are restored at the end of test_ota.py."
+}
