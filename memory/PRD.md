@@ -55,3 +55,7 @@ On the playout station's `casparcg.config`, add a `predefined-client` OSC pointi
 ## 3 OnTheAir outputs + macOS (added 2026-11)
 - `/ota` now shows clock + 3 stacked timers. Settings: `ota_host` (one Mac) + `ota_outputs` [{name, port}] ×3 (defaults 9993/9994/9995). One HyperDeck poll loop per output, independent reconnects.
 - macOS: `deploy/install-mac.sh` (venv + build) and `deploy/start-timer-mac.command` (double-click: backend + Chrome kiosk). Docs `deploy/MAC_SETUP.md`.
+
+## OnTheAir REST API mode (added 2026-11)
+- User has full OnTheAir Video (REST API). `ota_mode`: "api" (default, GET /playback/playing on 8081/8082/8083 → item_display_name, item_duration, item_elapsed, item_remaining, playback_status) or "hyperdeck". Toggle in Settings auto-fills ports.
+- Dev mock: `backend/mock_ota_api.py`. Real API is still unverified (token auth may be needed if enabled in OnTheAir; currently shows HTTP 401 as offline).

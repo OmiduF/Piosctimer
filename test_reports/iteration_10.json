@@ -1,0 +1,32 @@
+{
+  "summary": "Tested the OnTheAir REST API mode alongside HyperDeck mode. Backend: tests/test_ota.py was rewritten for ota_mode; 17/17 pass (settings validation, invalid ota_mode -> 422, mode field in /api/status, API-mode clips and countdowns, one API port (8089) unreachable, switching api<->hyperdeck, and API mode pointed at HyperDeck ports). Frontend (Playwright, 1920x1080): /ota in API mode shows 'Promo Meci 8081/8082/8083', ON AIR badges and decreasing countdowns; footer reads 'REST API 127.0.0.1 · 8081 / 8082 / 8083' and 'OnTheAir 3/3 connected'. In /settings the mode toggle auto-fills ports (8081-3 / 9993-5) and the label changes (Port API / Port HyperDeck). Saving HyperDeck mode makes /ota show 'Reportaj Stiri 999X.mov' with a HYPERDECK footer; switching back to API works. Port 8089 on output 2 shows only that panel as 'Offline :8089' and 'OnTheAir 2/3 connected'. CPU stayed near 0% while the port was unreachable. Regression: / and /vmix render; vMix offline is expected.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/settings", "issue": "ota_mode defaults to 'api' in SettingsIn, so a client that leaves out ota_mode (older UI or script) silently switches the app to API mode. Making the field required, or keeping the current OTA_MODE when it is missing, would be safer."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/ota before the first WS message", "issues": ["The EMPTY_OUTPUTS placeholder uses HyperDeck ports 9993-9995 while the footer label defaults to 'REST API', so the first paint can briefly read 'REST API — · 9993 / 9994 / 9995'. Cosmetic only."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_ota.py", "/app/test_reports/pytest/pytest_ota.xml"],
+  "action_items": [
+    "Optional: make ota_mode required in PUT /api/settings, or keep the current mode when it is missing",
+    "Optional: set the OtaDisplay EMPTY_OUTPUTS placeholder ports to 8081-8083 to match the default API mode"
+  ],
+  "critical_code_review_comments": [
+    "ota_api_poll/ota_poll_loop: restart-event handling is correct; mode switches take effect in under 0.3s and errors back off for 2s (no busy loop)",
+    "ota_clip_from_api handles missing item_remaining with total - elapsed, and falls back to alternate key names - good defensive mapping",
+    "tests/backend_test.py TestVmix (5 tests) fails only because the vMix mock is not running and real vMix 172.16.50.25 is unreachable. Expected per the brief, not a regression"
+  ],
+  "updated_files": ["/app/backend/tests/test_ota.py"],
+  "success_rate": {"backend": "100% (17/17 OTA tests; vMix tests skipped: offline expected)", "frontend": "100%"},
+  "seed_data_creation": "None. Temporary renames/ports were restored. Final settings: ota_host 127.0.0.1, ota_mode api, Output 1/8081, Output 2/8082, Output 3/8083, vmix 172.16.50.25:8088, osc 7250, channels 1/10, 2/10",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The mock_hyperdeck.py instances (9993-9995) were NOT running at start; I started them with setsid nohup. mock_ota_api.py runs on 8081-8083 (durations 45/65/85s). Run test_ota.py serially with '-n 0' because the tests share global settings state."
+}

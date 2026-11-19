@@ -679,7 +679,7 @@ class SettingsIn(BaseModel):
     vmix_port: int = Field(ge=1, le=65535)
     osc_port: int = Field(ge=1, le=65535)
     ota_host: str = Field(min_length=1, max_length=255)
-    ota_mode: Literal["api", "hyperdeck"] = "api"
+    ota_mode: Literal["api", "hyperdeck"] | None = None
     ota_outputs: list["OtaOutputSettings"] = Field(min_length=3, max_length=3)
     channels: list[ChannelSettings] = Field(min_length=2, max_length=2)
 
@@ -698,8 +698,9 @@ async def put_settings(body: SettingsIn):
     for h in (host, ota_host):
         if not re.fullmatch(r"[A-Za-z0-9.\-]+", h):
             raise HTTPException(status_code=422, detail=f"IP/host invalid: {h}")
-    host_changed = ota_host != OTA_HOST or body.ota_mode != OTA_MODE
-    OTA_HOST, OTA_MODE = ota_host, body.ota_mode
+    mode = body.ota_mode or OTA_MODE
+    host_changed = ota_host != OTA_HOST or mode != OTA_MODE
+    OTA_HOST, OTA_MODE = ota_host, mode
     for out, rt, new in zip(OTA_OUTPUTS, ota_rt, body.ota_outputs):
         out["name"] = new.name.strip() or out["name"]
         if host_changed or new.port != out["port"]:

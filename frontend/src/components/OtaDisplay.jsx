@@ -71,7 +71,7 @@ function OtaPanel({ output, index }) {
 }
 
 const EMPTY_CLIP = { id: null, title: "", elapsed: 0, total: 0, time_left: 0, status: "idle" };
-const EMPTY_OUTPUTS = [1, 2, 3].map((n) => ({ id: `out${n}`, name: `Output ${n}`, port: 9992 + n, connected: false, clip: EMPTY_CLIP }));
+const EMPTY_OUTPUTS = [1, 2, 3].map((n) => ({ id: `out${n}`, name: `Output ${n}`, port: 8080 + n, connected: false, clip: EMPTY_CLIP }));
 
 export function OtaDisplay() {
   const now = useClock();
