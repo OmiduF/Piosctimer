@@ -98,7 +98,7 @@ export function OtaDisplay() {
       ))}
 
       <div className="flex items-center justify-between border-t border-neutral-900 px-[3vw] py-2 font-mono text-[0.8vw] uppercase tracking-widest">
-        <span className="text-neutral-600">HyperDeck {ota?.host ?? "—"} · {(ota?.outputs || EMPTY_OUTPUTS).map((o) => o.port).join(" / ")}</span>
+        <span className="text-neutral-600">{ota?.mode === "hyperdeck" ? "HyperDeck" : "REST API"} {ota?.host ?? "—"} · {(ota?.outputs || EMPTY_OUTPUTS).map((o) => o.port).join(" / ")}</span>
         <span data-testid="ota-connection-status" className={`flex items-center gap-2 ${connected ? "text-neutral-500" : "animate-pulse text-red-500"}`}>
           {connected ? (
             <>

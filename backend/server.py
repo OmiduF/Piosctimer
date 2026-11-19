@@ -10,6 +10,8 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from typing import Literal
+
 from pydantic import BaseModel, Field
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import AsyncIOOSCUDPServer
@@ -48,10 +50,12 @@ VMIX_HOST = os.environ.get("VMIX_HOST", "172.16.50.25")
 VMIX_PORT = int(os.environ.get("VMIX_PORT", "8088"))
 
 # OnTheAir Video Express (Softron) via its HyperDeck emulation (TCP 9993)
-# Up to 3 outputs on the same Mac, each with its own HyperDeck port.
+# Up to 3 outputs on the same Mac. Mode "api" = OnTheAir Video REST API
+# (ports 8081/8082/8083), mode "hyperdeck" = HyperDeck emulation (9993...).
 OTA_HOST = os.environ.get("OTA_HOST", "192.168.1.100")
+OTA_MODE = os.environ.get("OTA_MODE", "api")
 OTA_OUTPUTS = [
-    {"id": f"out{i + 1}", "name": f"Output {i + 1}", "port": 9993 + i} for i in range(3)
+    {"id": f"out{i + 1}", "name": f"Output {i + 1}", "port": 8081 + i} for i in range(3)
 ]
 OTA_POLL_INTERVAL = float(os.environ.get("OTA_POLL_INTERVAL", "0.3"))
 OTA_TIMEOUT = float(os.environ.get("OTA_TIMEOUT", "2.0"))
@@ -62,7 +66,7 @@ SETTINGS_FILE = ROOT_DIR / "settings.json"
 
 
 def _load_settings():
-    global VMIX_HOST, VMIX_PORT, OSC_PORT, OTA_HOST
+    global VMIX_HOST, VMIX_PORT, OSC_PORT, OTA_HOST, OTA_MODE
     if not SETTINGS_FILE.exists():
         return
     try:
@@ -73,6 +77,8 @@ def _load_settings():
     VMIX_PORT = int(data.get("vmix_port", VMIX_PORT))
     OSC_PORT = int(data.get("osc_port", OSC_PORT))
     OTA_HOST = data.get("ota_host", OTA_HOST)
+    # files saved before API mode existed were HyperDeck-only
+    OTA_MODE = data.get("ota_mode", "hyperdeck" if "ota_host" in data else OTA_MODE)
     if "ota_port" in data:  # settings saved by the single-output version
         OTA_OUTPUTS[0]["port"] = int(data["ota_port"])
     for out, saved in zip(OTA_OUTPUTS, data.get("ota_outputs", [])):
@@ -89,6 +95,7 @@ def current_settings() -> dict:
         "vmix_port": VMIX_PORT,
         "osc_port": OSC_PORT,
         "ota_host": OTA_HOST,
+        "ota_mode": OTA_MODE,
         "ota_outputs": [{"name": o["name"], "port": o["port"]} for o in OTA_OUTPUTS],
         "channels": [
             {"id": c["id"], "channel": c["channel"], "layer": c["layer"]}
@@ -109,6 +116,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("timer-caspar")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # ---------------------------------------------------------------------------
 # Mongo (kept minimal; persistence reserved for future settings page).
@@ -334,7 +342,7 @@ def build_vmix_state() -> dict:
 # OnTheAir Video Express state (HyperDeck Ethernet protocol client)
 # ---------------------------------------------------------------------------
 ota_rt = [
-    {"transport": {}, "clips": {}, "last_ok": 0.0, "last_error": "", "restart": asyncio.Event()}
+    {"transport": {}, "clips": {}, "api": {}, "last_ok": 0.0, "last_error": "", "restart": asyncio.Event()}
     for _ in OTA_OUTPUTS
 ]
 
@@ -413,12 +421,32 @@ def parse_hd_clips(body: list[str]) -> dict:
     return clips
 
 
+async def ota_api_poll(idx: int, client: httpx.AsyncClient):
+    """REST API mode: poll GET /playback/playing until settings change."""
+    out, rt = OTA_OUTPUTS[idx], ota_rt[idx]
+    while not rt["restart"].is_set():
+        r = await client.get(f"http://{OTA_HOST}:{out['port']}/playback/playing")
+        if r.status_code != 200:
+            raise RuntimeError(f"HTTP {r.status_code}")
+        rt["api"] = r.json()
+        rt["last_ok"] = time.time()
+        rt["last_error"] = ""
+        try:
+            await asyncio.wait_for(rt["restart"].wait(), OTA_POLL_INTERVAL)
+        except asyncio.TimeoutError:
+            pass
+
+
 async def ota_poll_loop(idx: int):
     out, rt = OTA_OUTPUTS[idx], ota_rt[idx]
+    client = httpx.AsyncClient(timeout=OTA_TIMEOUT)
     while True:
         writer = None
         rt["restart"].clear()
         try:
+            if OTA_MODE == "api":
+                await ota_api_poll(idx, client)
+                continue
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(OTA_HOST, out["port"]), OTA_TIMEOUT
             )
@@ -448,6 +476,36 @@ async def ota_poll_loop(idx: int):
                 writer.close()
 
 
+def _num(d: dict, *keys) -> float:
+    for k in keys:
+        if isinstance(d.get(k), (int, float)):
+            return float(d[k])
+    return 0.0
+
+
+def ota_clip_from_api(d: dict, clip: dict):
+    """Map OnTheAir REST /playback/playing JSON (seconds) to our clip payload."""
+    title = d.get("item_display_name") or d.get("item_name") or ""
+    total = _num(d, "item_duration")
+    elapsed = _num(d, "item_elapsed", "item_elapsed_time")
+    remaining = _num(d, "item_remaining", "item_remaining_time") or max(0.0, total - elapsed)
+    status = str(d.get("playback_status") or d.get("item_playback_status") or "").lower()
+    if not title and not total:
+        return
+    clip.update(
+        {
+            "id": None,
+            "title": title,
+            "elapsed": round(elapsed, 2),
+            "total": round(total, 2),
+            "time_left": round(max(0.0, remaining), 2),
+            "status": "live"
+            if total <= 0.05
+            else ("playing" if status.startswith("play") else "paused"),
+        }
+    )
+
+
 def build_ota_output(idx: int) -> dict:
     out, rt = OTA_OUTPUTS[idx], ota_rt[idx]
     connected = bool(rt["last_ok"] and (time.time() - rt["last_ok"]) < 3.0)
@@ -468,6 +526,10 @@ def build_ota_output(idx: int) -> dict:
         "clip": clip,
     }
     if not connected:
+        return state
+
+    if OTA_MODE == "api":
+        ota_clip_from_api(rt["api"], clip)
         return state
 
     t = rt["transport"]
@@ -501,6 +563,7 @@ def build_ota_output(idx: int) -> dict:
 def build_ota_state() -> dict:
     return {
         "host": OTA_HOST,
+        "mode": OTA_MODE,
         "outputs": [build_ota_output(i) for i in range(len(OTA_OUTPUTS))],
     }
 
@@ -616,6 +679,7 @@ class SettingsIn(BaseModel):
     vmix_port: int = Field(ge=1, le=65535)
     osc_port: int = Field(ge=1, le=65535)
     ota_host: str = Field(min_length=1, max_length=255)
+    ota_mode: Literal["api", "hyperdeck"] = "api"
     ota_outputs: list["OtaOutputSettings"] = Field(min_length=3, max_length=3)
     channels: list[ChannelSettings] = Field(min_length=2, max_length=2)
 
@@ -628,14 +692,14 @@ async def get_settings():
 @api_router.put("/settings")
 async def put_settings(body: SettingsIn):
     global VMIX_HOST, VMIX_PORT, vmix_last_ok, vmix_last_error
-    global OTA_HOST
+    global OTA_HOST, OTA_MODE
     host = body.vmix_host.strip()
     ota_host = body.ota_host.strip()
     for h in (host, ota_host):
         if not re.fullmatch(r"[A-Za-z0-9.\-]+", h):
             raise HTTPException(status_code=422, detail=f"IP/host invalid: {h}")
-    host_changed = ota_host != OTA_HOST
-    OTA_HOST = ota_host
+    host_changed = ota_host != OTA_HOST or body.ota_mode != OTA_MODE
+    OTA_HOST, OTA_MODE = ota_host, body.ota_mode
     for out, rt, new in zip(OTA_OUTPUTS, ota_rt, body.ota_outputs):
         out["name"] = new.name.strip() or out["name"]
         if host_changed or new.port != out["port"]:

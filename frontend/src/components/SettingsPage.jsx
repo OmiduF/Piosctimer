@@ -63,6 +63,11 @@ export default function SettingsPage() {
     setForm((f) => ({ ...f, ota_outputs: f.ota_outputs.map((o, idx) => (idx === i ? { ...o, [key]: value } : o)) }));
   };
 
+  const setMode = (mode) => {
+    const base = mode === "api" ? 8081 : 9993;
+    setForm((f) => ({ ...f, ota_mode: mode, ota_outputs: f.ota_outputs.map((o, i) => ({ ...o, port: base + i })) }));
+  };
+
   const save = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -72,6 +77,7 @@ export default function SettingsPage() {
       vmix_port: Number(form.vmix_port),
       osc_port: Number(form.osc_port),
       ota_host: String(form.ota_host).trim(),
+      ota_mode: form.ota_mode,
       ota_outputs: form.ota_outputs.map((o) => ({ name: String(o.name).trim(), port: Number(o.port) })),
       channels: form.channels.map((c) => ({ channel: Number(c.channel), layer: Number(c.layer) })),
     };
@@ -109,13 +115,31 @@ export default function SettingsPage() {
               <Field label="Port vMix" testId="settings-vmix-port" type="number" min={1} max={65535} value={form.vmix_port} onChange={set("vmix_port")} required />
             </Section>
 
-            <Section title="OnTheAir Video Express (HyperDeck)" aside={ota && <StatusDot testId="settings-ota-status" ok={ota.outputs.every((o) => o.connected)} label={`${ota.outputs.filter((o) => o.connected).length}/${ota.outputs.length} conectate`} />}>
+            <Section title="OnTheAir Video" aside={ota && <StatusDot testId="settings-ota-status" ok={ota.outputs.every((o) => o.connected)} label={`${ota.outputs.filter((o) => o.connected).length}/${ota.outputs.length} conectate`} />}>
               <Field label="IP Mac OnTheAir" testId="settings-ota-host" value={form.ota_host} onChange={set("ota_host")} placeholder="192.168.1.100" required />
-              <div />
+              <div className="flex flex-col gap-2">
+                <span className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-500">Conexiune</span>
+                <div data-testid="settings-ota-mode" className="flex gap-1 rounded-md border border-neutral-800 bg-neutral-950 p-1">
+                  {[
+                    { id: "api", label: "REST API" },
+                    { id: "hyperdeck", label: "HyperDeck" },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      data-testid={`settings-ota-mode-${m.id}`}
+                      onClick={() => setMode(m.id)}
+                      className={`flex-1 rounded px-3 py-2.5 font-mono text-sm uppercase tracking-[0.15em] transition-colors ${form.ota_mode === m.id ? "bg-white text-black" : "text-neutral-400 hover:text-white"}`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {form.ota_outputs.map((o, i) => (
                 <div key={i} className="contents">
                   <Field label={`Output ${i + 1} · Nume pe ecran`} testId={`settings-ota-out${i + 1}-name`} value={o.name} maxLength={40} onChange={setOut(i, "name")} required />
-                  <Field label={`Output ${i + 1} · Port HyperDeck`} testId={`settings-ota-out${i + 1}-port`} type="number" min={1} max={65535} value={o.port} onChange={setOut(i, "port")} required />
+                  <Field label={`Output ${i + 1} · Port ${form.ota_mode === "api" ? "API" : "HyperDeck"}`} testId={`settings-ota-out${i + 1}-port`} type="number" min={1} max={65535} value={o.port} onChange={setOut(i, "port")} required />
                 </div>
               ))}
             </Section>
