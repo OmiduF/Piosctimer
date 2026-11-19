@@ -46,3 +46,8 @@ On the playout station's `casparcg.config`, add a `predefined-client` OSC pointi
 - Route `/settings` (gear icon in SourceSwitcher). Edit vMix IP/port, OSC UDP port, channel/layer for Timer 1 & 2. Applied live (vMix poller reads current host each loop; OSC listener is re-bound on port change).
 - API: `GET /api/settings`, `PUT /api/settings` (pydantic validation, host regex). Persisted to `backend/settings.json` (git-ignored, overrides .env, no MongoDB needed).
 - Remaining backlog: P1 sound alarm <10s, P2 Pi IP on screen, P2 kiosk exit shortcut, P2 font sizes in settings.
+
+## OnTheAir Video Express 6 (added 2026-11)
+- Route `/ota` (tab "OnTheAir" in switcher). Backend `ota_poll_loop` connects to Softron HyperDeck emulation (TCP 9993), polls `transport info` + `clips get`, computes time left from clip duration − timecode (fps from video format). States: playing / paused / idle.
+- Settings: `ota_host`, `ota_port` in /settings (applied live, persisted). Fixed busy-loop CPU bug on unreachable host.
+- Dev mock: `backend/mock_hyperdeck.py`. Needs check on real Express 6: whether timecode is clip-relative or absolute.

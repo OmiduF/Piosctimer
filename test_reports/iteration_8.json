@@ -1,0 +1,34 @@
+{
+  "summary": "Tested the OnTheAir Video Express 6 (HyperDeck emulation) feature from end to end against mock_hyperdeck.py on 127.0.0.1:9993. Backend: 8/8 pytest pass (settings GET/PUT with ota fields, 422 for invalid host, invalid port and missing fields, settings.json persistence, ota status block, time_left decreasing, live switch to port 9999 going offline and back to 9993 reconnecting in 0.2s). Frontend: /ota shows the wall clock, OnTheAir panel, 'Reportaj Stiri.mov', CLIP 2, ON AIR badge, a countdown that goes down (00:55 -> 00:53) and the footer 'OnTheAir connected'. All 4 switcher tabs navigate and reloading /ota directly works. On the Settings page the ota fields save and apply live (Deconectat at 9999, Conectat at 9993), the values persist after reload, and the UI shows an error message for an invalid host. Regression: / and /vmix still render; vMix is offline as expected. One real backend bug found: the OTA reconnect loop spins at about 99% CPU after a settings change while the OTA target is unreachable.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "ota_poll_loop (server.py ~L409-441) triggered via PUT /api/settings", "issue": "Busy-loop / 100% CPU: put_settings sets ota_restart, but the event is only cleared after a successful open_connection. If the new OTA host/port is unreachable, `await asyncio.wait_for(ota_restart.wait(), 2.0)` in the except branch returns immediately on every attempt, so the loop retries connect with no back-off. Measured: worker process at 98.7% CPU while ota_port=9999, back to 0.3% after restoring 9993. On a Raspberry Pi kiosk this will starve the UI whenever a wrong OTA IP is entered or OnTheAir is off after an IP change. Fix: call ota_restart.clear() at the top of each outer loop iteration (before open_connection), or clear it right after the wait in the except branch.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "hd_command", "issue": "Uses VMIX_TIMEOUT for HyperDeck reads; better to use a dedicated OTA timeout constant."},
+      {"endpoint": "build_ota_state", "issue": "`elapsed = tc - start if start and tc >= start else tc`: if a clip's start timecode is non-zero and the display timecode is clip-relative (below start), elapsed falls back to the raw timecode. This is fine for the mock, but needs checking on a real Express 6, which may report absolute timecode."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/vmix (pre-existing)", "issues": ["At 1920x1080 the 'VMIX · LOCAL TIME' label sits right at the top edge (about 10px) and the big clock comes close to the top-right source switcher. /ota has better vertical spacing."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_ota.py", "/app/test_reports/pytest/pytest_ota.xml"],
+  "action_items": [
+    "Fix the ota_poll_loop busy-loop: clear ota_restart before each reconnect attempt so the 2s back-off applies when the new OTA target is unreachable."
+  ],
+  "critical_code_review_comments": [
+    "ota_poll_loop: ota_restart is never cleared on a failed connect, so CPU spins at 100% after any settings change to an unreachable host (verified).",
+    "Existing backend_test.py TestVmix expects vmix host 127.0.0.1 (mock vMix), but the current settings are 172.16.50.25, so those tests will fail now. They are stale, not a regression.",
+    "backend_test.py BASE_URL falls back to a localhost default; tests should rely on REACT_APP_BACKEND_URL only."
+  ],
+  "updated_files": ["/app/backend/tests/test_ota.py"],
+  "success_rate": {"backend": "100% of functional tests (8/8); 1 perf/CPU bug found via manual check", "frontend": "100%"},
+  "seed_data_creation": "None. Settings were changed temporarily (ota_port 9999, invalid host) and restored to ota 127.0.0.1:9993, vmix 172.16.50.25:8088, osc 7250, channels 1/10 and 2/10 (verified in settings.json).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Mock HyperDeck runs as `python3 mock_hyperdeck.py 9993` (cwd /app/backend). Run tests with `pytest tests/test_ota.py -n 0`. Status text is CSS-uppercased, so use text_content rather than inner_text in Playwright. To verify the CPU fix: PUT ota_port=9999, then `top -p $(pgrep -f spawn_main)` should stay near 0%."
+}

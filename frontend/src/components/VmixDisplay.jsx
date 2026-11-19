@@ -163,7 +163,7 @@ export function VmixDisplay() {
       <SourceSwitcher />
 
       {/* Clock */}
-      <div className="flex flex-[0.9] flex-col items-center justify-center px-[4vw]">
+      <div className="flex flex-[0.9] flex-col items-center justify-center px-[4vw] pt-[4vh]">
         <div className="mb-2 font-mono text-[1.1vw] uppercase tracking-[0.6em] text-neutral-500">
           vMix · Local Time
         </div>

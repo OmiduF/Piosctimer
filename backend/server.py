@@ -51,6 +51,7 @@ VMIX_PORT = int(os.environ.get("VMIX_PORT", "8088"))
 OTA_HOST = os.environ.get("OTA_HOST", "192.168.1.100")
 OTA_PORT = int(os.environ.get("OTA_PORT", "9993"))
 OTA_POLL_INTERVAL = float(os.environ.get("OTA_POLL_INTERVAL", "0.3"))
+OTA_TIMEOUT = float(os.environ.get("OTA_TIMEOUT", "2.0"))
 
 # Runtime settings editable from the /settings page, persisted to settings.json
 # (overrides .env values; survives git pull since the file is git-ignored).
@@ -385,7 +386,7 @@ async def hd_command(reader, writer, cmd: str, expect: int) -> list[str]:
     writer.write((cmd + "\r\n").encode())
     await writer.drain()
     while True:
-        code, body = await asyncio.wait_for(hd_read_response(reader), VMIX_TIMEOUT)
+        code, body = await asyncio.wait_for(hd_read_response(reader), OTA_TIMEOUT)
         if code == expect:
             return body
         if 100 <= code < 200:
@@ -410,11 +411,11 @@ async def ota_poll_loop():
     global ota_transport, ota_clips, ota_last_ok, ota_last_error
     while True:
         writer = None
+        ota_restart.clear()
         try:
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(OTA_HOST, OTA_PORT), VMIX_TIMEOUT
+                asyncio.open_connection(OTA_HOST, OTA_PORT), OTA_TIMEOUT
             )
-            ota_restart.clear()
             last_clips = 0.0
             while not ota_restart.is_set():
                 ota_transport = parse_hd_block(
