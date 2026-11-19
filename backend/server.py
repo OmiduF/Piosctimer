@@ -63,6 +63,8 @@ OTA_TIMEOUT = float(os.environ.get("OTA_TIMEOUT", "2.0"))
 # Runtime settings editable from the /settings page, persisted to settings.json
 # (overrides .env values; survives git pull since the file is git-ignored).
 SETTINGS_FILE = ROOT_DIR / "settings.json"
+# Sources switched off in Settings send/listen to nothing on the network.
+SOURCES = {"casparcg": True, "vmix": True, "ota": True}
 
 
 def _load_settings():
@@ -76,6 +78,9 @@ def _load_settings():
     VMIX_HOST = data.get("vmix_host", VMIX_HOST)
     VMIX_PORT = int(data.get("vmix_port", VMIX_PORT))
     OSC_PORT = int(data.get("osc_port", OSC_PORT))
+    for k, v in data.get("sources", {}).items():
+        if k in SOURCES:
+            SOURCES[k] = bool(v)
     OTA_HOST = data.get("ota_host", OTA_HOST)
     # files saved before API mode existed were HyperDeck-only
     OTA_MODE = data.get("ota_mode", "hyperdeck" if "ota_host" in data else OTA_MODE)
@@ -94,6 +99,7 @@ def current_settings() -> dict:
         "vmix_host": VMIX_HOST,
         "vmix_port": VMIX_PORT,
         "osc_port": OSC_PORT,
+        "sources": dict(SOURCES),
         "ota_host": OTA_HOST,
         "ota_mode": OTA_MODE,
         "ota_outputs": [{"name": o["name"], "port": o["port"]} for o in OTA_OUTPUTS],
@@ -443,6 +449,10 @@ async def ota_poll_loop(idx: int):
     while True:
         writer = None
         rt["restart"].clear()
+        if not SOURCES["ota"]:
+            rt["last_ok"] = 0.0
+            await rt["restart"].wait()
+            continue
         try:
             if OTA_MODE == "api":
                 await ota_api_poll(idx, client)
@@ -573,6 +583,7 @@ def build_state() -> dict:
     return {
         "type": "state",
         "server_time": now,
+        "sources": dict(SOURCES),
         "osc": {
             "port": OSC_PORT,
             "host": OSC_HOST,
@@ -634,6 +645,10 @@ async def vmix_poll_loop():
     global vmix_last_ok, vmix_last_error
     async with httpx.AsyncClient(timeout=VMIX_TIMEOUT) as client:
         while True:
+            if not SOURCES["vmix"]:
+                vmix_last_ok = 0.0
+                await asyncio.sleep(1.0)
+                continue
             try:
                 r = await client.get(f"http://{VMIX_HOST}:{VMIX_PORT}/api/")
                 if r.status_code == 200:
@@ -674,12 +689,19 @@ class OtaOutputSettings(BaseModel):
     port: int = Field(ge=1, le=65535)
 
 
+class SourcesIn(BaseModel):
+    casparcg: bool = True
+    vmix: bool = True
+    ota: bool = True
+
+
 class SettingsIn(BaseModel):
     vmix_host: str = Field(min_length=1, max_length=255)
     vmix_port: int = Field(ge=1, le=65535)
     osc_port: int = Field(ge=1, le=65535)
     ota_host: str = Field(min_length=1, max_length=255)
     ota_mode: Literal["api", "hyperdeck"] | None = None
+    sources: SourcesIn | None = None
     ota_outputs: list["OtaOutputSettings"] = Field(min_length=3, max_length=3)
     channels: list[ChannelSettings] = Field(min_length=2, max_length=2)
 
@@ -699,7 +721,11 @@ async def put_settings(body: SettingsIn):
         if not re.fullmatch(r"[A-Za-z0-9.\-]+", h):
             raise HTTPException(status_code=422, detail=f"IP/host invalid: {h}")
     mode = body.ota_mode or OTA_MODE
-    host_changed = ota_host != OTA_HOST or mode != OTA_MODE
+    new_sources = body.sources.model_dump() if body.sources else dict(SOURCES)
+    ota_toggled = new_sources["ota"] != SOURCES["ota"]
+    osc_toggled = new_sources["casparcg"] != SOURCES["casparcg"]
+    SOURCES.update(new_sources)
+    host_changed = ota_host != OTA_HOST or mode != OTA_MODE or ota_toggled
     OTA_HOST, OTA_MODE = ota_host, mode
     for out, rt, new in zip(OTA_OUTPUTS, ota_rt, body.ota_outputs):
         out["name"] = new.name.strip() or out["name"]
@@ -712,7 +738,7 @@ async def put_settings(body: SettingsIn):
         vmix_last_ok, vmix_last_error = 0.0, ""
     for cfg, new in zip(CHANNELS, body.channels):
         cfg["channel"], cfg["layer"] = new.channel, new.layer
-    if body.osc_port != OSC_PORT:
+    if body.osc_port != OSC_PORT or osc_toggled:
         await start_osc(body.osc_port)
     SETTINGS_FILE.write_text(json.dumps(current_settings(), indent=2))
     logger.info("Settings updated: %s", current_settings())
@@ -776,7 +802,12 @@ async def start_osc(port: int):
     old = getattr(app.state, "osc_transport", None)
     if old:
         old.close()
+        app.state.osc_transport = None
     OSC_PORT = port
+    if not SOURCES["casparcg"]:
+        osc_listening = False
+        logger.info("CasparCG source disabled: OSC listener stopped")
+        return
     dispatcher = Dispatcher()
     dispatcher.set_default_handler(osc_handler)
     try:

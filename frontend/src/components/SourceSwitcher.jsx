@@ -1,15 +1,29 @@
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Settings } from "lucide-react";
 
 // Subtle segmented control (top-right) to switch the kiosk display between the
 // CasparCG and vMix sources. Semi-transparent so it stays out of the way.
 export function SourceSwitcher() {
   const { pathname } = useLocation();
-  const tabs = [
-    { to: "/", label: "CasparCG" },
-    { to: "/vmix", label: "vMix" },
-    { to: "/ota", label: "OnTheAir", id: "ota" },
+  const navigate = useNavigate();
+  const [sources, setSources] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/settings").then((r) => r.json()).then((d) => setSources(d.sources)).catch(() => {});
+  }, []);
+
+  const allTabs = [
+    { to: "/", label: "CasparCG", src: "casparcg" },
+    { to: "/vmix", label: "vMix", src: "vmix" },
+    { to: "/ota", label: "OnTheAir", id: "ota", src: "ota" },
   ];
+  const tabs = sources ? allTabs.filter((t) => sources[t.src]) : allTabs;
+
+  // if the current page's source is switched off, jump to the first active one
+  useEffect(() => {
+    if (sources && tabs.length && !tabs.some((t) => t.to === pathname)) navigate(tabs[0].to, { replace: true });
+  }, [sources, pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div

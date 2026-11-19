@@ -30,6 +30,40 @@ function Section({ title, children, aside }) {
   );
 }
 
+const SOURCE_LIST = [
+  { id: "casparcg", label: "CasparCG" },
+  { id: "vmix", label: "vMix" },
+  { id: "ota", label: "OnTheAir" },
+];
+
+function SourceToggles({ sources, onToggle }) {
+  return (
+    <section className="py-8">
+      <h2 className="mb-2 font-mono text-sm uppercase tracking-[0.3em] text-neutral-300">Surse active</h2>
+      <p className="mb-5 text-sm text-neutral-500">Sursele oprite nu mai folosesc rețeaua și dispar din meniul de sus.</p>
+      <div className="flex flex-wrap gap-3">
+        {SOURCE_LIST.map((src) => {
+          const on = sources[src.id];
+          return (
+            <button
+              key={src.id}
+              type="button"
+              data-testid={`settings-source-${src.id}`}
+              aria-pressed={on}
+              onClick={() => onToggle(src.id)}
+              className={`flex items-center gap-3 rounded-full border px-5 py-2.5 font-mono text-sm uppercase tracking-[0.15em] transition-colors ${on ? "border-emerald-500/60 bg-emerald-500/10 text-white" : "border-neutral-800 text-neutral-500 hover:text-neutral-300"}`}
+            >
+              <span className={`h-2 w-2 rounded-full ${on ? "bg-emerald-400" : "bg-neutral-700"}`} />
+              {src.label}
+              <span className="text-xs text-neutral-500">{on ? "Pornit" : "Oprit"}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function StatusDot({ ok, label, testId }) {
   return (
     <span data-testid={testId} className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-neutral-400">
@@ -63,6 +97,13 @@ export default function SettingsPage() {
     setForm((f) => ({ ...f, ota_outputs: f.ota_outputs.map((o, idx) => (idx === i ? { ...o, [key]: value } : o)) }));
   };
 
+  const toggleSource = (id) => {
+    setForm((f) => {
+      const next = { ...f.sources, [id]: !f.sources[id] };
+      return Object.values(next).some(Boolean) ? { ...f, sources: next } : f;
+    });
+  };
+
   const setMode = (mode) => {
     const base = mode === "api" ? 8081 : 9993;
     setForm((f) => ({ ...f, ota_mode: mode, ota_outputs: f.ota_outputs.map((o, i) => ({ ...o, port: base + i })) }));
@@ -78,6 +119,7 @@ export default function SettingsPage() {
       osc_port: Number(form.osc_port),
       ota_host: String(form.ota_host).trim(),
       ota_mode: form.ota_mode,
+      sources: form.sources,
       ota_outputs: form.ota_outputs.map((o) => ({ name: String(o.name).trim(), port: Number(o.port) })),
       channels: form.channels.map((c) => ({ channel: Number(c.channel), layer: Number(c.layer) })),
     };
@@ -110,12 +152,13 @@ export default function SettingsPage() {
           <Loader2 className="animate-spin text-neutral-500" data-testid="settings-loading" />
         ) : (
           <form onSubmit={save}>
-            <Section title="vMix" aside={vmix && <StatusDot testId="settings-vmix-status" ok={vmix.connected} label={vmix.connected ? "Conectat" : "Deconectat"} />}>
+            <SourceToggles sources={form.sources} onToggle={toggleSource} />
+            <Section title="vMix" aside={vmix && form.sources.vmix && <StatusDot testId="settings-vmix-status" ok={vmix.connected} label={vmix.connected ? "Conectat" : "Deconectat"} />}>
               <Field label="IP vMix" testId="settings-vmix-host" value={form.vmix_host} onChange={set("vmix_host")} placeholder="172.16.50.25" required />
               <Field label="Port vMix" testId="settings-vmix-port" type="number" min={1} max={65535} value={form.vmix_port} onChange={set("vmix_port")} required />
             </Section>
 
-            <Section title="OnTheAir Video" aside={ota && <StatusDot testId="settings-ota-status" ok={ota.outputs.every((o) => o.connected)} label={`${ota.outputs.filter((o) => o.connected).length}/${ota.outputs.length} conectate`} />}>
+            <Section title="OnTheAir Video" aside={ota && form.sources.ota && <StatusDot testId="settings-ota-status" ok={ota.outputs.every((o) => o.connected)} label={`${ota.outputs.filter((o) => o.connected).length}/${ota.outputs.length} conectate`} />}>
               <Field label="IP Mac OnTheAir" testId="settings-ota-host" value={form.ota_host} onChange={set("ota_host")} placeholder="192.168.1.100" required />
               <div className="flex flex-col gap-2">
                 <span className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-500">Conexiune</span>
@@ -144,7 +187,7 @@ export default function SettingsPage() {
               ))}
             </Section>
 
-            <Section title="CasparCG (OSC)" aside={osc && <StatusDot testId="settings-osc-status" ok={osc.listening} label={osc.listening ? "Ascultă" : "Port blocat"} />}>
+            <Section title="CasparCG (OSC)" aside={osc && form.sources.casparcg && <StatusDot testId="settings-osc-status" ok={osc.listening} label={osc.listening ? "Ascultă" : "Port blocat"} />}>
               <Field label="Port OSC (UDP)" testId="settings-osc-port" type="number" min={1} max={65535} value={form.osc_port} onChange={set("osc_port")} required />
               <div />
               {form.channels.map((c, i) => (
