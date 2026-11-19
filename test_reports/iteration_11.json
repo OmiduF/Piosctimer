@@ -1,0 +1,29 @@
+{
+  "summary": "Tested source on/off toggles (CasparCG/vMix/OnTheAir) end-to-end. Backend: new tests/test_sources.py (8 tests) + regression test_ota.py (16) -> 24/24 pass when run serially. Verified: GET /api/status & /api/settings include sources; casparcg off -> osc.listening=false, back on -> true; PUT without 'sources' keeps current sources; ota off -> all 3 outputs connected=false and stay false (no polling) in both API and HyperDeck modes, back on -> reconnect; vmix off -> vmix.connected=false; invalid source type -> 422. Frontend: Settings 'Surse active' toggles show aria-pressed + Pornit/Oprit, last active source cannot be turned off, saving persists across reload, status dots hide for disabled sources. With CasparCG+vMix off: only switch-ota + gear shown, / and /vmix redirect to /ota, /ota shows 3 outputs connected with clips/timers; 'Inapoi la timer' link also ends on /ota. With OTA off: switch-ota hidden, /ota -> /, status shows ota connected=[false,false,false]. Regression: HyperDeck/REST API mode switch via UI still 3/3 connected, OSC 'Asculta'. Settings restored to defaults at end (all sources on, api mode, 8081-8083, vmix 172.16.50.25:8088, osc 7250, channels 1/10 2/10).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/settings", "issue": "Backend accepts sources all false (200). Only the UI prevents turning off all 3; an API client could disable every source. Consider a 422 (or forcing casparcg on) server-side."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_sources.py", "/app/backend/tests/test_ota.py", "/app/test_reports/pytest/pytest_sources.xml"],
+  "action_items": [
+    "Optional: reject sources all-false in put_settings (server-side validation matching the UI rule)"
+  ],
+  "critical_code_review_comments": [
+    "SourceSwitcher fetches /api/settings only on mount; fine since every page remounts it, but it could instead use 'sources' from the existing websocket state to react live to changes from another client.",
+    "Settings status dots use unsaved form.sources (hide as soon as toggled, before save) - acceptable but slightly inconsistent with backend state.",
+    "Tests share global backend state: running test_ota.py and test_sources.py in parallel (xdist default) causes interference; run with -n 0."
+  ],
+  "updated_files": ["/app/backend/tests/test_sources.py (new)", "/app/backend/tests/test_ota.py (removed None from invalid ota_mode params: ota_mode is Optional by design, null keeps current mode)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. Settings modified during tests and restored to defaults.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run backend tests serially: pytest tests/test_ota.py tests/test_sources.py -n 0. Mocks on 8081-8083 (REST) and 9993-9995 (HyperDeck). test_sources.py autouse fixture restores defaults with all sources on."
+}

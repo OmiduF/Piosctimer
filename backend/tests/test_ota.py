@@ -81,7 +81,7 @@ class TestSettings:
         assert d["vmix_host"] == "172.16.50.25" and d["vmix_port"] == 8088
         assert d["osc_port"] == 7250 and len(d["channels"]) == 2
 
-    @pytest.mark.parametrize("mode", ["foo", "API", "", None, 1])
+    @pytest.mark.parametrize("mode", ["foo", "API", "", 1])
     def test_invalid_mode_422(self, mode):
         r = put(dict(DEFAULT, ota_mode=mode))
         assert r.status_code == 422

@@ -722,6 +722,8 @@ async def put_settings(body: SettingsIn):
             raise HTTPException(status_code=422, detail=f"IP/host invalid: {h}")
     mode = body.ota_mode or OTA_MODE
     new_sources = body.sources.model_dump() if body.sources else dict(SOURCES)
+    if not any(new_sources.values()):
+        raise HTTPException(status_code=422, detail="Cel puțin o sursă trebuie să fie pornită")
     ota_toggled = new_sources["ota"] != SOURCES["ota"]
     osc_toggled = new_sources["casparcg"] != SOURCES["casparcg"]
     SOURCES.update(new_sources)

@@ -59,3 +59,6 @@ On the playout station's `casparcg.config`, add a `predefined-client` OSC pointi
 ## OnTheAir REST API mode (added 2026-11)
 - User has full OnTheAir Video (REST API). `ota_mode`: "api" (default, GET /playback/playing on 8081/8082/8083 → item_display_name, item_duration, item_elapsed, item_remaining, playback_status) or "hyperdeck". Toggle in Settings auto-fills ports.
 - Dev mock: `backend/mock_ota_api.py`. Real API is still unverified (token auth may be needed if enabled in OnTheAir; currently shows HTTP 401 as offline).
+
+## Sources on/off (added 2026-11)
+- `sources` {casparcg, vmix, ota} in settings.json. A disabled source stops its network activity (OSC socket closed, vMix/OTA polling paused), disappears from the switcher, and its page redirects to the first active source. All off -> 422. Start page stays "/".
