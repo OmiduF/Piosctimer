@@ -58,6 +58,11 @@ export default function SettingsPage() {
     setForm((f) => ({ ...f, channels: f.channels.map((c, idx) => (idx === i ? { ...c, [key]: value } : c)) }));
   };
 
+  const setOut = (i, key) => (e) => {
+    const value = e.target.value;
+    setForm((f) => ({ ...f, ota_outputs: f.ota_outputs.map((o, idx) => (idx === i ? { ...o, [key]: value } : o)) }));
+  };
+
   const save = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -67,7 +72,7 @@ export default function SettingsPage() {
       vmix_port: Number(form.vmix_port),
       osc_port: Number(form.osc_port),
       ota_host: String(form.ota_host).trim(),
-      ota_port: Number(form.ota_port),
+      ota_outputs: form.ota_outputs.map((o) => ({ name: String(o.name).trim(), port: Number(o.port) })),
       channels: form.channels.map((c) => ({ channel: Number(c.channel), layer: Number(c.layer) })),
     };
     try {
@@ -104,9 +109,15 @@ export default function SettingsPage() {
               <Field label="Port vMix" testId="settings-vmix-port" type="number" min={1} max={65535} value={form.vmix_port} onChange={set("vmix_port")} required />
             </Section>
 
-            <Section title="OnTheAir Video Express (HyperDeck)" aside={ota && <StatusDot testId="settings-ota-status" ok={ota.connected} label={ota.connected ? "Conectat" : "Deconectat"} />}>
-              <Field label="IP OnTheAir" testId="settings-ota-host" value={form.ota_host} onChange={set("ota_host")} placeholder="192.168.1.100" required />
-              <Field label="Port HyperDeck" testId="settings-ota-port" type="number" min={1} max={65535} value={form.ota_port} onChange={set("ota_port")} required />
+            <Section title="OnTheAir Video Express (HyperDeck)" aside={ota && <StatusDot testId="settings-ota-status" ok={ota.outputs.every((o) => o.connected)} label={`${ota.outputs.filter((o) => o.connected).length}/${ota.outputs.length} conectate`} />}>
+              <Field label="IP Mac OnTheAir" testId="settings-ota-host" value={form.ota_host} onChange={set("ota_host")} placeholder="192.168.1.100" required />
+              <div />
+              {form.ota_outputs.map((o, i) => (
+                <div key={i} className="contents">
+                  <Field label={`Output ${i + 1} · Nume pe ecran`} testId={`settings-ota-out${i + 1}-name`} value={o.name} maxLength={40} onChange={setOut(i, "name")} required />
+                  <Field label={`Output ${i + 1} · Port HyperDeck`} testId={`settings-ota-out${i + 1}-port`} type="number" min={1} max={65535} value={o.port} onChange={setOut(i, "port")} required />
+                </div>
+              ))}
             </Section>
 
             <Section title="CasparCG (OSC)" aside={osc && <StatusDot testId="settings-osc-status" ok={osc.listening} label={osc.listening ? "Ascultă" : "Port blocat"} />}>

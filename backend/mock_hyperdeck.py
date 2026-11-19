@@ -8,7 +8,7 @@ import sys
 import time
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 9993
-CLIPS = [("Intro Show.mov", 30), ("Reportaj Stiri.mov", 90)]
+CLIPS = [("Intro Show.mov", 30), (f"Reportaj Stiri {PORT}.mov", 40 + (PORT - 9993) * 25)]
 START = time.time()
 
 
