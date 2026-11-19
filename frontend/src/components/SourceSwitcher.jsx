@@ -8,6 +8,7 @@ export function SourceSwitcher() {
   const tabs = [
     { to: "/", label: "CasparCG" },
     { to: "/vmix", label: "vMix" },
+    { to: "/ota", label: "OnTheAir", id: "ota" },
   ];
 
   return (
@@ -21,7 +22,7 @@ export function SourceSwitcher() {
           <Link
             key={t.to}
             to={t.to}
-            data-testid={`switch-${t.label.toLowerCase()}`}
+            data-testid={`switch-${t.id || t.label.toLowerCase()}`}
             className={`rounded-full px-4 py-1.5 font-mono text-[0.8vw] uppercase tracking-[0.2em] transition-colors ${
               active
                 ? "bg-white text-black"

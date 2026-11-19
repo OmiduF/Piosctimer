@@ -3,7 +3,7 @@ import { Radio, WifiOff, Clapperboard, Eye } from "lucide-react";
 import { useTimerSocket } from "@/hooks/useTimerSocket";
 import { SourceSwitcher } from "@/components/SourceSwitcher";
 
-function useClock() {
+export function useClock() {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 250);
@@ -12,25 +12,25 @@ function useClock() {
   return now;
 }
 
-function pad(n) {
+export function pad(n) {
   return String(n).padStart(2, "0");
 }
 
-function formatTimeLeft(seconds) {
+export function formatTimeLeft(seconds) {
   const s = Math.max(0, Math.floor(seconds));
   const m = Math.floor(s / 60);
   const rem = s % 60;
   return `${pad(m)}:${pad(rem)}`;
 }
 
-function levelFor(status, timeLeft) {
+export function levelFor(status, timeLeft) {
   if (status !== "playing") return status; // idle | live
   if (timeLeft <= 10) return "danger";
   if (timeLeft <= 30) return "warn";
   return "ok";
 }
 
-const LEVEL_STYLES = {
+export const LEVEL_STYLES = {
   ok: { text: "text-white", accent: "bg-emerald-500", glow: "" },
   warn: { text: "text-amber-400", accent: "bg-amber-400", glow: "" },
   danger: {
@@ -40,6 +40,7 @@ const LEVEL_STYLES = {
   },
   idle: { text: "text-neutral-600", accent: "bg-neutral-700", glow: "" },
   live: { text: "text-sky-400", accent: "bg-sky-500", glow: "" },
+  paused: { text: "text-neutral-400", accent: "bg-neutral-500", glow: "" },
 };
 
 function RoleBadge({ role, status }) {

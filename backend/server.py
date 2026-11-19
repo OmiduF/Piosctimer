@@ -47,13 +47,18 @@ CHANNELS = [
 VMIX_HOST = os.environ.get("VMIX_HOST", "172.16.50.25")
 VMIX_PORT = int(os.environ.get("VMIX_PORT", "8088"))
 
+# OnTheAir Video Express (Softron) via its HyperDeck emulation (TCP 9993)
+OTA_HOST = os.environ.get("OTA_HOST", "192.168.1.100")
+OTA_PORT = int(os.environ.get("OTA_PORT", "9993"))
+OTA_POLL_INTERVAL = float(os.environ.get("OTA_POLL_INTERVAL", "0.3"))
+
 # Runtime settings editable from the /settings page, persisted to settings.json
 # (overrides .env values; survives git pull since the file is git-ignored).
 SETTINGS_FILE = ROOT_DIR / "settings.json"
 
 
 def _load_settings():
-    global VMIX_HOST, VMIX_PORT, OSC_PORT
+    global VMIX_HOST, VMIX_PORT, OSC_PORT, OTA_HOST, OTA_PORT
     if not SETTINGS_FILE.exists():
         return
     try:
@@ -63,6 +68,8 @@ def _load_settings():
     VMIX_HOST = data.get("vmix_host", VMIX_HOST)
     VMIX_PORT = int(data.get("vmix_port", VMIX_PORT))
     OSC_PORT = int(data.get("osc_port", OSC_PORT))
+    OTA_HOST = data.get("ota_host", OTA_HOST)
+    OTA_PORT = int(data.get("ota_port", OTA_PORT))
     for cfg, saved in zip(CHANNELS, data.get("channels", [])):
         cfg["channel"] = int(saved.get("channel", cfg["channel"]))
         cfg["layer"] = int(saved.get("layer", cfg["layer"]))
@@ -73,6 +80,8 @@ def current_settings() -> dict:
         "vmix_host": VMIX_HOST,
         "vmix_port": VMIX_PORT,
         "osc_port": OSC_PORT,
+        "ota_host": OTA_HOST,
+        "ota_port": OTA_PORT,
         "channels": [
             {"id": c["id"], "channel": c["channel"], "layer": c["layer"]}
             for c in CHANNELS
@@ -313,6 +322,174 @@ def build_vmix_state() -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# OnTheAir Video Express state (HyperDeck Ethernet protocol client)
+# ---------------------------------------------------------------------------
+ota_transport: dict = {}
+ota_clips: dict[str, dict] = {}
+ota_last_ok = 0.0
+ota_last_error = ""
+ota_restart = asyncio.Event()
+
+TC_RE = re.compile(r"(\d{2}):(\d{2}):(\d{2})[:;.](\d{2})")
+CLIP_RE = re.compile(
+    r"^(\d+):\s*(.*?)\s+(?:(\d{2}:\d{2}:\d{2}[:;]\d{2})\s+)?(\d{2}:\d{2}:\d{2}[:;]\d{2})$"
+)
+
+
+def hd_fps(video_format: str) -> float:
+    m = re.search(r"(\d+)([ip])(\d+)", video_format or "")
+    if not m:
+        return 25.0
+    raw = m.group(3)
+    rate = int(raw) / 100.0 if len(raw) > 2 else float(raw)
+    if m.group(2) == "i":
+        rate /= 2
+    return rate if rate > 0 else 25.0
+
+
+def tc_seconds(tc: str, fps: float) -> float:
+    m = TC_RE.search(tc or "")
+    if not m:
+        return 0.0
+    h, mi, se, fr = (int(x) for x in m.groups())
+    return h * 3600 + mi * 60 + se + fr / max(1.0, round(fps))
+
+
+def parse_hd_block(lines: list[str]) -> dict:
+    out = {}
+    for line in lines:
+        if ":" in line:
+            k, v = line.split(":", 1)
+            out[k.strip().lower()] = v.strip()
+    return out
+
+
+async def hd_read_response(reader) -> tuple[int, list[str]]:
+    """Read one HyperDeck response: header line + body until blank line."""
+    header = (await reader.readline()).decode(errors="ignore").strip()
+    if not header:
+        return 0, []
+    code = int(header.split(" ", 1)[0]) if header[:3].isdigit() else 0
+    body = []
+    if header.endswith(":"):
+        while True:
+            line = (await reader.readline()).decode(errors="ignore")
+            if not line or not line.strip():
+                break
+            body.append(line.strip())
+    return code, body
+
+
+async def hd_command(reader, writer, cmd: str, expect: int) -> list[str]:
+    writer.write((cmd + "\r\n").encode())
+    await writer.drain()
+    while True:
+        code, body = await asyncio.wait_for(hd_read_response(reader), VMIX_TIMEOUT)
+        if code == expect:
+            return body
+        if 100 <= code < 200:
+            raise RuntimeError(f"HyperDeck error {code} for '{cmd}'")
+        # skip async notifications (5xx) and blanks
+
+
+def parse_hd_clips(body: list[str]) -> dict:
+    clips = {}
+    for line in body:
+        m = CLIP_RE.match(line)
+        if m:
+            clips[m.group(1)] = {
+                "name": m.group(2),
+                "start": m.group(3) or "",
+                "duration": m.group(4),
+            }
+    return clips
+
+
+async def ota_poll_loop():
+    global ota_transport, ota_clips, ota_last_ok, ota_last_error
+    while True:
+        writer = None
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(OTA_HOST, OTA_PORT), VMIX_TIMEOUT
+            )
+            ota_restart.clear()
+            last_clips = 0.0
+            while not ota_restart.is_set():
+                ota_transport = parse_hd_block(
+                    await hd_command(reader, writer, "transport info", 208)
+                )
+                now = time.time()
+                clip_id = ota_transport.get("clip id", "")
+                if now - last_clips > 3.0 or (clip_id and clip_id not in ota_clips):
+                    ota_clips = parse_hd_clips(
+                        await hd_command(reader, writer, "clips get", 205)
+                    )
+                    last_clips = now
+                ota_last_ok = now
+                ota_last_error = ""
+                await asyncio.sleep(OTA_POLL_INTERVAL)
+        except Exception as exc:
+            ota_last_error = (str(exc) or type(exc).__name__)[:120]
+            try:
+                await asyncio.wait_for(ota_restart.wait(), 2.0)
+            except asyncio.TimeoutError:
+                pass
+        finally:
+            if writer:
+                writer.close()
+
+
+def build_ota_state() -> dict:
+    now = time.time()
+    connected = bool(ota_last_ok and (now - ota_last_ok) < 3.0)
+    clip = {
+        "id": None,
+        "title": "",
+        "elapsed": 0.0,
+        "total": 0.0,
+        "time_left": 0.0,
+        "status": "idle",
+    }
+    state = {
+        "connected": connected,
+        "host": OTA_HOST,
+        "port": OTA_PORT,
+        "error": "" if connected else ota_last_error,
+        "clip": clip,
+    }
+    if not connected:
+        return state
+
+    t = ota_transport
+    clip_id = t.get("clip id", "")
+    info = ota_clips.get(clip_id)
+    if not info or clip_id in ("", "none"):
+        return state
+
+    fps = hd_fps(t.get("video format", ""))
+    total = tc_seconds(info["duration"], fps)
+    start = tc_seconds(info["start"], fps)
+    tc = tc_seconds(t.get("display timecode") or t.get("timecode", ""), fps)
+    elapsed = tc - start if start and tc >= start else tc
+    elapsed = min(max(0.0, elapsed), total)
+
+    clip.update(
+        {
+            "id": clip_id,
+            "title": info["name"],
+            "elapsed": round(elapsed, 2),
+            "total": round(total, 2),
+            "time_left": round(max(0.0, total - elapsed), 2),
+            "status": "live"
+            if total <= 0.05
+            else ("playing" if t.get("status") == "play" else "paused"),
+        }
+    )
+    return state
+
+
 def build_state() -> dict:
     now = time.time()
     return {
@@ -330,6 +507,7 @@ def build_state() -> dict:
         },
         "channels": [build_channel_payload(cfg) for cfg in CHANNELS],
         "vmix": build_vmix_state(),
+        "ota": build_ota_state(),
     }
 
 
@@ -417,6 +595,8 @@ class SettingsIn(BaseModel):
     vmix_host: str = Field(min_length=1, max_length=255)
     vmix_port: int = Field(ge=1, le=65535)
     osc_port: int = Field(ge=1, le=65535)
+    ota_host: str = Field(min_length=1, max_length=255)
+    ota_port: int = Field(ge=1, le=65535)
     channels: list[ChannelSettings] = Field(min_length=2, max_length=2)
 
 
@@ -428,9 +608,16 @@ async def get_settings():
 @api_router.put("/settings")
 async def put_settings(body: SettingsIn):
     global VMIX_HOST, VMIX_PORT, vmix_last_ok, vmix_last_error
+    global OTA_HOST, OTA_PORT, ota_last_ok
     host = body.vmix_host.strip()
-    if not re.fullmatch(r"[A-Za-z0-9.\-]+", host):
-        raise HTTPException(status_code=422, detail="IP/host vMix invalid")
+    ota_host = body.ota_host.strip()
+    for h in (host, ota_host):
+        if not re.fullmatch(r"[A-Za-z0-9.\-]+", h):
+            raise HTTPException(status_code=422, detail=f"IP/host invalid: {h}")
+    if (ota_host, body.ota_port) != (OTA_HOST, OTA_PORT):
+        OTA_HOST, OTA_PORT = ota_host, body.ota_port
+        ota_last_ok = 0.0
+        ota_restart.set()
     if (host, body.vmix_port) != (VMIX_HOST, VMIX_PORT):
         VMIX_HOST, VMIX_PORT = host, body.vmix_port
         vmix_last_ok, vmix_last_error = 0.0, ""
@@ -530,6 +717,9 @@ async def on_startup():
     app.state.broadcast_task = asyncio.create_task(broadcast_loop())
     logger.info("WebSocket broadcast loop started")
 
+    app.state.ota_task = asyncio.create_task(ota_poll_loop())
+    logger.info("OnTheAir (HyperDeck) poll loop started (target %s:%s)", OTA_HOST, OTA_PORT)
+
     app.state.vmix_task = asyncio.create_task(vmix_poll_loop())
     logger.info("vMix poll loop started (target %s:%s)", VMIX_HOST, VMIX_PORT)
 
@@ -539,9 +729,10 @@ async def on_shutdown():
     task = getattr(app.state, "broadcast_task", None)
     if task:
         task.cancel()
-    vmix_task = getattr(app.state, "vmix_task", None)
-    if vmix_task:
-        vmix_task.cancel()
+    for name in ("vmix_task", "ota_task"):
+        t = getattr(app.state, name, None)
+        if t:
+            t.cancel()
     transport = getattr(app.state, "osc_transport", None)
     if transport:
         transport.close()

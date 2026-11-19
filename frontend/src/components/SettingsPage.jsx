@@ -66,6 +66,8 @@ export default function SettingsPage() {
       vmix_host: String(form.vmix_host).trim(),
       vmix_port: Number(form.vmix_port),
       osc_port: Number(form.osc_port),
+      ota_host: String(form.ota_host).trim(),
+      ota_port: Number(form.ota_port),
       channels: form.channels.map((c) => ({ channel: Number(c.channel), layer: Number(c.layer) })),
     };
     try {
@@ -82,6 +84,7 @@ export default function SettingsPage() {
 
   const vmix = state?.vmix;
   const osc = state?.osc;
+  const ota = state?.ota;
 
   return (
     <div data-testid="settings-page" className="min-h-screen bg-black px-8 py-10 text-white sm:px-16">
@@ -99,6 +102,11 @@ export default function SettingsPage() {
             <Section title="vMix" aside={vmix && <StatusDot testId="settings-vmix-status" ok={vmix.connected} label={vmix.connected ? "Conectat" : "Deconectat"} />}>
               <Field label="IP vMix" testId="settings-vmix-host" value={form.vmix_host} onChange={set("vmix_host")} placeholder="172.16.50.25" required />
               <Field label="Port vMix" testId="settings-vmix-port" type="number" min={1} max={65535} value={form.vmix_port} onChange={set("vmix_port")} required />
+            </Section>
+
+            <Section title="OnTheAir Video Express (HyperDeck)" aside={ota && <StatusDot testId="settings-ota-status" ok={ota.connected} label={ota.connected ? "Conectat" : "Deconectat"} />}>
+              <Field label="IP OnTheAir" testId="settings-ota-host" value={form.ota_host} onChange={set("ota_host")} placeholder="192.168.1.100" required />
+              <Field label="Port HyperDeck" testId="settings-ota-port" type="number" min={1} max={65535} value={form.ota_port} onChange={set("ota_port")} required />
             </Section>
 
             <Section title="CasparCG (OSC)" aside={osc && <StatusDot testId="settings-osc-status" ok={osc.listening} label={osc.listening ? "Ascultă" : "Port blocat"} />}>
