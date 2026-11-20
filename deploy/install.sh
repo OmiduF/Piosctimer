@@ -32,7 +32,10 @@ echo "==> [1/6] Instalare pachete de sistem..."
 sudo apt-get update -y
 sudo apt-get install -y \
   python3 python3-venv python3-pip \
-  chromium-browser x11-xserver-utils curl ca-certificates
+  x11-xserver-utils curl ca-certificates
+# Raspberry Pi OS / Ubuntu: chromium-browser, Debian: chromium
+sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium \
+  || echo "    ATENȚIE: Chromium nu s-a instalat; deschide manual http://localhost:8001"
 
 # Node.js + yarn (pentru build-ul frontend)
 if ! command -v node >/dev/null 2>&1; then
