@@ -388,15 +388,21 @@ def parse_hd_block(lines: list[str]) -> dict:
 
 async def hd_read_response(reader) -> tuple[int, list[str]]:
     """Read one HyperDeck response: header line + body until blank line."""
-    header = (await reader.readline()).decode(errors="ignore").strip()
+    raw = await reader.readline()
+    if not raw:
+        raise ConnectionError("HyperDeck closed the connection")
+    header = raw.decode(errors="ignore").strip()
     if not header:
         return 0, []
     code = int(header.split(" ", 1)[0]) if header[:3].isdigit() else 0
     body = []
     if header.endswith(":"):
         while True:
-            line = (await reader.readline()).decode(errors="ignore")
-            if not line or not line.strip():
+            raw = await reader.readline()
+            if not raw:
+                raise ConnectionError("HyperDeck closed the connection")
+            line = raw.decode(errors="ignore")
+            if not line.strip():
                 break
             body.append(line.strip())
     return code, body

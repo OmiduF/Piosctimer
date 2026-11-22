@@ -62,3 +62,7 @@ On the playout station's `casparcg.config`, add a `predefined-client` OSC pointi
 
 ## Sources on/off (added 2026-11)
 - `sources` {casparcg, vmix, ota} in settings.json. A disabled source stops its network activity (OSC socket closed, vMix/OTA polling paused), disappears from the switcher, and its page redirects to the first active source. All off -> 422. Start page stays "/".
+
+## Bug fix 2026-11-22: memory leak / freeze on Ubuntu VM
+- Root cause: when an OnTheAir HyperDeck instance closed the TCP connection, hd_read_response got EOF (b"") and returned code 0 → hd_command looped forever without yielding (98% CPU; on Python 3.12 timeout handles pile up → GBs of RAM, VM unreachable). Fixed: EOF raises ConnectionError → normal reconnect every 2s.
+- Also: broadcaster sends with 1s timeout and drops stalled clients; systemd MemoryMax=500M; GET /api/debug/mem (?start=1 enables tracemalloc).
