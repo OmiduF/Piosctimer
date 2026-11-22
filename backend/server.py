@@ -614,18 +614,22 @@ class Broadcaster:
     def disconnect(self, ws: WebSocket):
         self.clients.discard(ws)
 
+    async def _send(self, ws: WebSocket, data: str):
+        try:
+            await asyncio.wait_for(ws.send_text(data), 1.0)
+        except Exception:
+            # slow/frozen clients are dropped so nothing piles up in memory
+            self.disconnect(ws)
+            try:
+                await asyncio.wait_for(ws.close(), 1.0)
+            except Exception:
+                pass
+
     async def broadcast(self, message: dict):
         if not self.clients:
             return
         data = json.dumps(message)
-        dead = []
-        for ws in list(self.clients):
-            try:
-                await ws.send_text(data)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.disconnect(ws)
+        await asyncio.gather(*(self._send(ws, data) for ws in list(self.clients)))
 
 
 broadcaster = Broadcaster()
@@ -704,6 +708,37 @@ class SettingsIn(BaseModel):
     sources: SourcesIn | None = None
     ota_outputs: list["OtaOutputSettings"] = Field(min_length=3, max_length=3)
     channels: list[ChannelSettings] = Field(min_length=2, max_length=2)
+
+
+@api_router.get("/debug/mem")
+async def debug_mem(start: bool = False):
+    """Memory diagnostics: call with ?start=1, wait a few minutes, call again."""
+    import resource
+    import tracemalloc
+
+    if start and not tracemalloc.is_tracing():
+        tracemalloc.start(5)
+    info = {
+        "rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1),
+        "ws_clients": len(broadcaster.clients),
+        "asyncio_tasks": len(asyncio.all_tasks()),
+        "tracing": tracemalloc.is_tracing(),
+    }
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS"):
+                    info["rss_now_mb"] = round(int(line.split()[1]) / 1024, 1)
+    except OSError:
+        pass
+    if tracemalloc.is_tracing():
+        snap = tracemalloc.take_snapshot()
+        info["top"] = [
+            f"{st.size / 1024 / 1024:.1f} MB x{st.count} "
+            + " <- ".join(f"{Path(fr.filename).name}:{fr.lineno}" for fr in reversed(st.traceback))
+            for st in snap.statistics("traceback")[:8]
+        ]
+    return info
 
 
 @api_router.get("/settings")

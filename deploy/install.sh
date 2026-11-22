@@ -104,6 +104,7 @@ WorkingDirectory=${PROJECT_DIR}/backend
 ExecStart=${PROJECT_DIR}/backend/venv/bin/uvicorn server:app --host 0.0.0.0 --port 8001
 Restart=always
 RestartSec=3
+MemoryMax=500M
 Environment=PYTHONUNBUFFERED=1
 
 [Install]
