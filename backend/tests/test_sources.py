@@ -15,6 +15,7 @@ DEFAULT = {
     "ota_host": "127.0.0.1",
     "ota_mode": "api",
     "sources": ALL_ON,
+    "ota_count": 3,
     "ota_outputs": [{"name": f"Output {i + 1}", "port": 8081 + i} for i in range(3)],
     "channels": [{"channel": 1, "layer": 10}, {"channel": 2, "layer": 10}],
 }

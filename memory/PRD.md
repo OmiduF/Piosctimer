@@ -66,3 +66,6 @@ On the playout station's `casparcg.config`, add a `predefined-client` OSC pointi
 ## Bug fix 2026-11-22: memory leak / freeze on Ubuntu VM
 - Root cause: when an OnTheAir HyperDeck instance closed the TCP connection, hd_read_response got EOF (b"") and returned code 0 → hd_command looped forever without yielding (98% CPU; on Python 3.12 timeout handles pile up → GBs of RAM, VM unreachable). Fixed: EOF raises ConnectionError → normal reconnect every 2s.
 - Also: broadcaster sends with 1s timeout and drops stalled clients; systemd MemoryMax=500M; GET /api/debug/mem (?start=1 enables tracemalloc).
+
+## OnTheAir player count (2026-11-22)
+- Settings: "Câte playere folosești" 1–4 (ota_count, 4 slots stored). Unused players open no connection (REST client is per-session `async with`, closes keep-alive). /ota: 1 player = clock + huge timer; font scales per count.

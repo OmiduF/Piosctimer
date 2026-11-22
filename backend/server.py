@@ -441,9 +441,15 @@ def parse_hd_clips(body: list[str]) -> dict:
     return clips
 
 
-async def ota_api_poll(idx: int, client: httpx.AsyncClient):
+async def ota_api_poll(idx: int):
     """REST API mode: poll GET /playback/playing until settings change."""
     out, rt = OTA_OUTPUTS[idx], ota_rt[idx]
+    # client lives only while polling, so keep-alive sockets close on any change
+    async with httpx.AsyncClient(timeout=OTA_TIMEOUT) as client:
+        await _ota_api_poll(out, rt, client)
+
+
+async def _ota_api_poll(out: dict, rt: dict, client: httpx.AsyncClient):
     while not rt["restart"].is_set():
         r = await client.get(f"http://{OTA_HOST}:{out['port']}/playback/playing")
         if r.status_code != 200:
@@ -459,7 +465,6 @@ async def ota_api_poll(idx: int, client: httpx.AsyncClient):
 
 async def ota_poll_loop(idx: int):
     out, rt = OTA_OUTPUTS[idx], ota_rt[idx]
-    client = httpx.AsyncClient(timeout=OTA_TIMEOUT)
     while True:
         writer = None
         rt["restart"].clear()
@@ -469,7 +474,7 @@ async def ota_poll_loop(idx: int):
             continue
         try:
             if OTA_MODE == "api":
-                await ota_api_poll(idx, client)
+                await ota_api_poll(idx)
                 continue
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(OTA_HOST, out["port"]), OTA_TIMEOUT

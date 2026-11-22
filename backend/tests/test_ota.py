@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import time
+from pathlib import Path
 
 import pytest
 import requests
@@ -18,6 +19,8 @@ DEFAULT = {
     "osc_port": 7250,
     "ota_host": "127.0.0.1",
     "ota_mode": "api",
+    "sources": {"casparcg": True, "vmix": True, "ota": True},
+    "ota_count": 3,
     "ota_outputs": API_OUTPUTS,
     "channels": [{"channel": 1, "layer": 10}, {"channel": 2, "layer": 10}],
 }
@@ -77,7 +80,7 @@ class TestSettings:
         d = requests.get(f"{BASE_URL}/api/settings", timeout=10).json()
         assert d["ota_host"] == "127.0.0.1"
         assert d["ota_mode"] == "api"
-        assert d["ota_outputs"] == API_OUTPUTS
+        assert d["ota_outputs"][:3] == API_OUTPUTS and d["ota_count"] == 3
         assert d["vmix_host"] == "172.16.50.25" and d["vmix_port"] == 8088
         assert d["osc_port"] == 7250 and len(d["channels"]) == 2
 
@@ -90,7 +93,7 @@ class TestSettings:
     def test_invalid_ota_host_422(self):
         assert put(dict(DEFAULT, ota_host="bad host;x")).status_code == 422
 
-    @pytest.mark.parametrize("n", [0, 2, 4])
+    @pytest.mark.parametrize("n", [0, 5])
     def test_wrong_outputs_length_422(self, n):
         assert put(dict(DEFAULT, ota_outputs=(API_OUTPUTS * 2)[:n])).status_code == 422
 
@@ -101,7 +104,7 @@ class TestSettings:
     def test_rename_persists(self):
         r = put(with_outputs(o0={"name": "TEST_Studio A"}))
         assert r.status_code == 200 and r.json()["ota_outputs"][0]["name"] == "TEST_Studio A"
-        f = json.loads(open("/app/backend/settings.json").read())
+        f = json.loads(Path("/app/backend/settings.json").read_text())
         assert f["ota_outputs"][0]["name"] == "TEST_Studio A" and f["ota_mode"] == "api"
         time.sleep(0.5)
         assert all_connected(ota())
@@ -130,7 +133,7 @@ class TestApiMode:
 
     def test_one_port_unreachable(self):
         assert put(with_outputs(o1={"port": 8089})).status_code == 200
-        o, ok = wait_for(lambda o: not o["outputs"][1]["connected"], 5)
+        o, ok = wait_for(lambda o: not o["outputs"][1]["connected"] and o["outputs"][1]["error"], 5)
         assert ok, o
         assert o["outputs"][1]["clip"]["status"] == "idle"
         assert o["outputs"][1]["error"]
@@ -157,7 +160,7 @@ class TestModeSwitch:
         assert o["mode"] == "hyperdeck"
         for out in o["outputs"]:
             assert abs(out["clip"]["total"] - HD_EXPECTED[out["port"]]) < 0.1
-        assert json.loads(open("/app/backend/settings.json").read())["ota_mode"] == "hyperdeck"
+        assert json.loads(Path("/app/backend/settings.json").read_text())["ota_mode"] == "hyperdeck"
         r = put(DEFAULT)
         assert r.status_code == 200 and r.json()["ota_mode"] == "api"
         t0 = time.time()

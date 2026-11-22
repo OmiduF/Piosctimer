@@ -26,7 +26,15 @@ function StatusBadge({ status, testId }) {
   );
 }
 
-function OtaPanel({ output, index, big }) {
+const TIME_SIZE = {
+  1: "text-[min(20vw,40vh)]",
+  2: "text-[min(12vw,26vh)]",
+  3: "text-[min(9vw,19vh)]",
+  4: "text-[min(9vw,13vh)]",
+};
+
+function OtaPanel({ output, index, count }) {
+  const big = count === 1;
   const clip = output.clip;
   const level = levelFor(clip.status === "paused" ? "playing" : clip.status, clip.time_left);
   const style = LEVEL_STYLES[clip.status === "paused" ? "paused" : level] || LEVEL_STYLES.idle;
@@ -58,7 +66,7 @@ function OtaPanel({ output, index, big }) {
         </div>
         <div
           data-testid={`ota-output-${index + 1}-timeleft`}
-          className={`shrink-0 font-mono font-bold leading-none tabular-nums ${big ? "text-[min(20vw,40vh)]" : "text-[9vw]"} ${style.text} ${style.glow} ${level === "danger" && clip.status === "playing" ? "animate-pulse" : ""}`}
+          className={`shrink-0 font-mono font-bold leading-none tabular-nums ${TIME_SIZE[count] || TIME_SIZE[4]} ${style.text} ${style.glow} ${level === "danger" && clip.status === "playing" ? "animate-pulse" : ""}`}
         >
           {hasTime ? formatTimeLeft(clip.time_left) : "--:--"}
         </div>
@@ -71,7 +79,7 @@ function OtaPanel({ output, index, big }) {
 }
 
 const EMPTY_CLIP = { id: null, title: "", elapsed: 0, total: 0, time_left: 0, status: "idle" };
-const EMPTY_OUTPUTS = [1, 2, 3].map((n) => ({ id: `out${n}`, name: `Output ${n}`, port: 8080 + n, connected: false, clip: EMPTY_CLIP }));
+const EMPTY_OUTPUTS = [{ id: "out1", name: "Output 1", port: "—", connected: false, clip: EMPTY_CLIP }];
 
 export function OtaDisplay() {
   const now = useClock();
@@ -94,7 +102,7 @@ export function OtaDisplay() {
       </div>
 
       {outputs.map((o, i) => (
-        <OtaPanel key={o.id} output={o} index={i} big={outputs.length === 1} />
+        <OtaPanel key={o.id} output={o} index={i} count={outputs.length} />
       ))}
 
       <div className="flex items-center justify-between border-t border-neutral-900 px-[3vw] py-2 font-mono text-[0.8vw] uppercase tracking-widest">

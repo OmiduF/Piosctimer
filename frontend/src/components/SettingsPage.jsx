@@ -172,6 +172,7 @@ export default function SettingsPage() {
                       key={m.id}
                       type="button"
                       data-testid={`settings-ota-mode-${m.id}`}
+                      aria-pressed={form.ota_mode === m.id}
                       onClick={() => setMode(m.id)}
                       className={`flex-1 rounded px-3 py-2.5 font-mono text-sm uppercase tracking-[0.15em] transition-colors ${form.ota_mode === m.id ? "bg-white text-black" : "text-neutral-400 hover:text-white"}`}
                     >

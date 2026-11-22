@@ -1,0 +1,40 @@
+{
+  "summary": "Tested OnTheAir player count (ota_count 1..4). Backend: new tests/test_ota_count.py (15 tests) plus regression test_ota.py and test_sources.py, 36/37 pass. Settings: GET returns an int ota_count and 4 ota_outputs. PUT with 1..4 is saved to settings.json and returned by GET. 0, 5 and -1 give 422. A PUT without ota_count keeps the current count. A PUT with only 3 outputs (old client) is accepted and output 4 is kept. /api/status outputs length equals ota_count. HyperDeck mode with count=1 on 127.0.0.1:9993: connected and time_left goes down. HyperDeck mode, checked with ss on the worker PID: going from 3 to 1 closes the ESTABLISHED connections to 9994/9995, they stay closed, and going back to 3 reopens them. HyperDeck EOF regression: a TCP server that sends '500 connection info' and closes gives the error 'HyperDeck closed the connection' and backend CPU stays at about 0.2%. FAILED: in REST API mode, an unused player keeps its HTTP keep-alive connection ESTABLISHED (see backend_issues). Frontend: settings-ota-count-1..4 work and set aria-pressed. Only N name/port pairs are shown. Saving persists after reload. The mode toggle still fills ports automatically (8081-8084 / 9993-9996). /ota: the number of panels equals the count and updates live through the websocket (1->3->4->1). With 1 output at 1920x1080 and 1920x800 the panel is big (time 384px / 320px), the header shows name, clip and On Air, nothing is clipped, and there is no scroll. The 3-output layout is unchanged. With 4 outputs at 1920x800 the timers are clipped.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "ota_poll_loop / ota_api_poll (REST API mode)", "issue": "When ota_count is lowered (and also when the OTA source is turned off, or the mode/port changes), the per-output httpx.AsyncClient is never closed. Its pooled keep-alive connection to the now-unused port stays ESTABLISHED for as long as the server keeps it open. Reproduced with an HTTP/1.1 keep-alive server: the connection was still ESTABLISHED 10s after setting ota_count=1. This breaks the requirement 'unused players must not open any network connection'. The repo mock (mock_ota_api.py) uses HTTP/1.0 and closes every request, so it hides the problem. The real OnTheAir REST API will most likely use keep-alive. Fix: in ota_poll_loop, before the idle wait (idx >= OTA_COUNT or source off), and after ota_api_poll returns on restart, call `await client.aclose()` and create a new client. Alternatively use `async with httpx.AsyncClient(...)` inside ota_api_poll.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "uvicorn --reload", "issue": "The backend reloads whenever any .py file under /app/backend changes, including tests/*.py. Editing a test file restarts the worker and drops all OTA/OSC connections for a few seconds. This is probably why test_ota.py::test_one_port_unreachable was flaky before. It passed 4 runs in a row here. Consider adding --reload-exclude tests."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "OtaDisplay 4 outputs", "issue": "At 1920x800 with ota_count=4 each panel is 121px tall, but the time text is a fixed text-[9vw] (172.8px). The timer overflows the panel and is clipped or overlaps the panel above and below. At 1920x1080 it fits but is very tight. Make the size depend on the count, e.g. text-[min(9vw,13vh)] for 4 outputs.", "selector": "[data-testid=ota-output-N-timeleft]", "priority": "MEDIUM"},
+      {"component": "OtaDisplay initial render", "issue": "EMPTY_OUTPUTS is hardcoded to 3 offline placeholders (ports 8081-8083). Before the first websocket state arrives, the screen briefly shows 3 offline panels even when ota_count=1. Show a neutral loading state or a single placeholder instead.", "selector": "[data-testid=ota-display]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Settings", "issues": ["The mode buttons settings-ota-mode-api/-hyperdeck have no aria-pressed, while the count and source buttons do (inconsistent).", "Pressing a count button changes the form, but the status dot ('1/1 conectate') still shows the saved count until Save. This is acceptable but could confuse users."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_ota_count.py", "/app/backend/tests/test_ota.py", "/app/backend/tests/test_sources.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Close the httpx client (connection pool) of an OTA output when it goes idle (count lowered, source off, restart). Re-run tests/test_ota_count.py::TestApiCount::test_api_unused_ports_closed.",
+    "Make the /ota time font fit 4 outputs at short viewports (1920x800).",
+    "Optionally drop the hardcoded 3-panel EMPTY_OUTPUTS placeholder.",
+    "Optionally add --reload-exclude for tests/ in the backend supervisor command."
+  ],
+  "critical_code_review_comments": [
+    "server.py ota_poll_loop: one httpx.AsyncClient is created per output for the life of the process and never closed. The idle branch leaves pooled sockets open (root cause of the API-mode leak).",
+    "server.py put_settings: ota_outputs entries beyond len(body.ota_outputs) are kept (good for old clients). Shorter lists are now allowed (min_length=1), so test_ota.py's old n=2/4 -> 422 test was obsolete and was updated to [0,5].",
+    "server.py is 923 lines. It should be split into modules (ota.py, vmix.py, osc.py, settings.py)."
+  ],
+  "updated_files": ["/app/backend/tests/test_ota_count.py (new)", "/app/backend/tests/test_ota.py (DEFAULT pins ota_count=3; length-422 test now [0,5]; schema test checks first 3 outputs)", "/app/backend/tests/test_sources.py (DEFAULT pins ota_count=3)"],
+  "success_rate": {"backend": "97% (36/37; the 1 failure is a real bug)", "frontend": "90% (all requested checks pass; 4-output clipping at 800px height)"},
+  "seed_data_creation": "none. Temporary output name TEST_Play 1 was used and then restored.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the tests one at a time (serially): cd /app/backend && export REACT_APP_BACKEND_URL=... && pytest tests/test_ota.py tests/test_sources.py tests/test_ota_count.py -n 0. test_ota_count.py finds the uvicorn worker PID through ss -tlnp :8001 (it skips the 'uvicorn' parent) and checks ESTABLISHED peers with ss. The API keep-alive test starts its own HTTP/1.1 server on a free port, because mock_ota_api.py is HTTP/1.0. The EOF test starts its own TCP server. Editing any .py under backend triggers a backend reload, so wait about 5s after edits. Settings were restored to: api mode, host 127.0.0.1, ota_count 3, ports 8081-8084, names Output 1..4, all sources on.",
+  "rca of the issue": "API-mode connection leak: ota_poll_loop creates one httpx.AsyncClient per output outside the loop. When the output becomes unused, ota_api_poll returns (or the loop goes idle) without calling client.aclose(), so httpx's pool keeps the idle keep-alive socket open. Repro: start an HTTP/1.1 keep-alive server on port P, PUT api mode with ota_count=2 and outputs[1].port=P, wait until connected, PUT ota_count=1, then `ss -tnp state established | grep P` still shows the backend worker. Mitigation: call aclose() and recreate the client when the loop goes idle or restarts."
+}
