@@ -119,6 +119,7 @@ export default function SettingsPage() {
       osc_port: Number(form.osc_port),
       ota_host: String(form.ota_host).trim(),
       ota_mode: form.ota_mode,
+      ota_count: Number(form.ota_count),
       sources: form.sources,
       ota_outputs: form.ota_outputs.map((o) => ({ name: String(o.name).trim(), port: Number(o.port) })),
       channels: form.channels.map((c) => ({ channel: Number(c.channel), layer: Number(c.layer) })),
@@ -179,7 +180,24 @@ export default function SettingsPage() {
                   ))}
                 </div>
               </div>
-              {form.ota_outputs.map((o, i) => (
+              <div className="flex flex-col gap-2 sm:col-span-2">
+                <span className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-500">Câte playere folosești</span>
+                <div data-testid="settings-ota-count" className="flex gap-1 rounded-md border border-neutral-800 bg-neutral-950 p-1">
+                  {form.ota_outputs.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      data-testid={`settings-ota-count-${i + 1}`}
+                      aria-pressed={form.ota_count === i + 1}
+                      onClick={() => setForm((f) => ({ ...f, ota_count: i + 1 }))}
+                      className={`flex-1 rounded px-3 py-2.5 font-mono text-sm uppercase tracking-[0.15em] transition-colors ${form.ota_count === i + 1 ? "bg-white text-black" : "text-neutral-400 hover:text-white"}`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {form.ota_outputs.slice(0, form.ota_count).map((o, i) => (
                 <div key={i} className="contents">
                   <Field label={`Output ${i + 1} · Nume pe ecran`} testId={`settings-ota-out${i + 1}-name`} value={o.name} maxLength={40} onChange={setOut(i, "name")} required />
                   <Field label={`Output ${i + 1} · Port ${form.ota_mode === "api" ? "API" : "HyperDeck"}`} testId={`settings-ota-out${i + 1}-port`} type="number" min={1} max={65535} value={o.port} onChange={setOut(i, "port")} required />

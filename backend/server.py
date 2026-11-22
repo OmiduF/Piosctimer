@@ -54,9 +54,12 @@ VMIX_PORT = int(os.environ.get("VMIX_PORT", "8088"))
 # (ports 8081/8082/8083), mode "hyperdeck" = HyperDeck emulation (9993...).
 OTA_HOST = os.environ.get("OTA_HOST", "192.168.1.100")
 OTA_MODE = os.environ.get("OTA_MODE", "api")
+OTA_MAX_OUTPUTS = 4
 OTA_OUTPUTS = [
-    {"id": f"out{i + 1}", "name": f"Output {i + 1}", "port": 8081 + i} for i in range(3)
+    {"id": f"out{i + 1}", "name": f"Output {i + 1}", "port": 8081 + i}
+    for i in range(OTA_MAX_OUTPUTS)
 ]
+OTA_COUNT = 3  # how many players are actually used (1..OTA_MAX_OUTPUTS)
 OTA_POLL_INTERVAL = float(os.environ.get("OTA_POLL_INTERVAL", "0.3"))
 OTA_TIMEOUT = float(os.environ.get("OTA_TIMEOUT", "2.0"))
 
@@ -68,7 +71,7 @@ SOURCES = {"casparcg": True, "vmix": True, "ota": True}
 
 
 def _load_settings():
-    global VMIX_HOST, VMIX_PORT, OSC_PORT, OTA_HOST, OTA_MODE
+    global VMIX_HOST, VMIX_PORT, OSC_PORT, OTA_HOST, OTA_MODE, OTA_COUNT
     if not SETTINGS_FILE.exists():
         return
     try:
@@ -84,6 +87,10 @@ def _load_settings():
     OTA_HOST = data.get("ota_host", OTA_HOST)
     # files saved before API mode existed were HyperDeck-only
     OTA_MODE = data.get("ota_mode", "hyperdeck" if "ota_host" in data else OTA_MODE)
+    OTA_COUNT = min(OTA_MAX_OUTPUTS, max(1, int(data.get("ota_count", OTA_COUNT))))
+    base = 8081 if OTA_MODE == "api" else 9993
+    for i, out in enumerate(OTA_OUTPUTS):
+        out["port"] = base + i
     if "ota_port" in data:  # settings saved by the single-output version
         OTA_OUTPUTS[0]["port"] = int(data["ota_port"])
     for out, saved in zip(OTA_OUTPUTS, data.get("ota_outputs", [])):
@@ -102,6 +109,7 @@ def current_settings() -> dict:
         "sources": dict(SOURCES),
         "ota_host": OTA_HOST,
         "ota_mode": OTA_MODE,
+        "ota_count": OTA_COUNT,
         "ota_outputs": [{"name": o["name"], "port": o["port"]} for o in OTA_OUTPUTS],
         "channels": [
             {"id": c["id"], "channel": c["channel"], "layer": c["layer"]}
@@ -455,7 +463,7 @@ async def ota_poll_loop(idx: int):
     while True:
         writer = None
         rt["restart"].clear()
-        if not SOURCES["ota"]:
+        if not SOURCES["ota"] or idx >= OTA_COUNT:
             rt["last_ok"] = 0.0
             await rt["restart"].wait()
             continue
@@ -580,7 +588,7 @@ def build_ota_state() -> dict:
     return {
         "host": OTA_HOST,
         "mode": OTA_MODE,
-        "outputs": [build_ota_output(i) for i in range(len(OTA_OUTPUTS))],
+        "outputs": [build_ota_output(i) for i in range(OTA_COUNT)],
     }
 
 
@@ -712,7 +720,8 @@ class SettingsIn(BaseModel):
     ota_host: str = Field(min_length=1, max_length=255)
     ota_mode: Literal["api", "hyperdeck"] | None = None
     sources: SourcesIn | None = None
-    ota_outputs: list["OtaOutputSettings"] = Field(min_length=3, max_length=3)
+    ota_count: int | None = Field(default=None, ge=1, le=OTA_MAX_OUTPUTS)
+    ota_outputs: list["OtaOutputSettings"] = Field(min_length=1, max_length=OTA_MAX_OUTPUTS)
     channels: list[ChannelSettings] = Field(min_length=2, max_length=2)
 
 
@@ -755,7 +764,7 @@ async def get_settings():
 @api_router.put("/settings")
 async def put_settings(body: SettingsIn):
     global VMIX_HOST, VMIX_PORT, vmix_last_ok, vmix_last_error
-    global OTA_HOST, OTA_MODE
+    global OTA_HOST, OTA_MODE, OTA_COUNT
     host = body.vmix_host.strip()
     ota_host = body.ota_host.strip()
     for h in (host, ota_host):
@@ -770,9 +779,13 @@ async def put_settings(body: SettingsIn):
     SOURCES.update(new_sources)
     host_changed = ota_host != OTA_HOST or mode != OTA_MODE or ota_toggled
     OTA_HOST, OTA_MODE = ota_host, mode
-    for out, rt, new in zip(OTA_OUTPUTS, ota_rt, body.ota_outputs):
+    count = body.ota_count or OTA_COUNT
+    old_count, OTA_COUNT = OTA_COUNT, count
+    for i, (out, rt) in enumerate(zip(OTA_OUTPUTS, ota_rt)):
+        new = body.ota_outputs[i] if i < len(body.ota_outputs) else OtaOutputSettings(**out)
         out["name"] = new.name.strip() or out["name"]
-        if host_changed or new.port != out["port"]:
+        in_use_changed = (i < count) != (i < old_count)
+        if host_changed or in_use_changed or new.port != out["port"]:
             out["port"] = new.port
             rt["last_ok"] = 0.0
             rt["restart"].set()

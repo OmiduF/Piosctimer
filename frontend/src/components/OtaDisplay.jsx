@@ -26,7 +26,7 @@ function StatusBadge({ status, testId }) {
   );
 }
 
-function OtaPanel({ output, index }) {
+function OtaPanel({ output, index, big }) {
   const clip = output.clip;
   const level = levelFor(clip.status === "paused" ? "playing" : clip.status, clip.time_left);
   const style = LEVEL_STYLES[clip.status === "paused" ? "paused" : level] || LEVEL_STYLES.idle;
@@ -34,10 +34,10 @@ function OtaPanel({ output, index }) {
   const progress = hasTime && clip.total > 0 ? Math.min(100, (clip.elapsed / clip.total) * 100) : 0;
 
   return (
-    <div data-testid={`ota-output-${index + 1}-panel`} className="relative flex flex-1 items-center overflow-hidden border-t border-neutral-800/80 px-[4vw]">
+    <div data-testid={`ota-output-${index + 1}-panel`} className={`relative flex items-center overflow-hidden border-t border-neutral-800/80 px-[4vw] ${big ? "flex-[2.2]" : "flex-1"}`}>
       <div className={`absolute left-0 top-0 h-full w-[8px] ${style.accent}`} />
-      <div className="flex w-full items-center justify-between gap-6">
-        <div className="flex min-w-0 flex-col gap-3">
+      <div className={`flex w-full gap-6 ${big ? "flex-col items-center justify-center" : "items-center justify-between"}`}>
+        <div className={`flex min-w-0 flex-col gap-3 ${big ? "items-center" : ""}`}>
           <div className="flex items-center gap-3">
             <span data-testid={`ota-output-${index + 1}-name`} className="font-mono text-[1.4vw] font-bold uppercase tracking-[0.3em] text-neutral-400">{output.name}</span>
             {!output.connected && (
@@ -58,7 +58,7 @@ function OtaPanel({ output, index }) {
         </div>
         <div
           data-testid={`ota-output-${index + 1}-timeleft`}
-          className={`shrink-0 font-mono font-bold leading-none tabular-nums text-[9vw] ${style.text} ${style.glow} ${level === "danger" && clip.status === "playing" ? "animate-pulse" : ""}`}
+          className={`shrink-0 font-mono font-bold leading-none tabular-nums ${big ? "text-[min(20vw,40vh)]" : "text-[9vw]"} ${style.text} ${style.glow} ${level === "danger" && clip.status === "playing" ? "animate-pulse" : ""}`}
         >
           {hasTime ? formatTimeLeft(clip.time_left) : "--:--"}
         </div>
@@ -93,8 +93,8 @@ export function OtaDisplay() {
         </div>
       </div>
 
-      {(ota?.outputs || EMPTY_OUTPUTS).map((o, i) => (
-        <OtaPanel key={o.id} output={o} index={i} />
+      {outputs.map((o, i) => (
+        <OtaPanel key={o.id} output={o} index={i} big={outputs.length === 1} />
       ))}
 
       <div className="flex items-center justify-between border-t border-neutral-900 px-[3vw] py-2 font-mono text-[0.8vw] uppercase tracking-widest">
